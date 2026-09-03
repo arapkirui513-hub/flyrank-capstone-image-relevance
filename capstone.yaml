@@ -1,0 +1,19 @@
+name: flyrank-capstone-image-relevance
+version: 0.1.0
+
+run: npm start
+
+seed: TBD
+
+test: npm test
+
+base_url: http://localhost:3000
+
+endpoints:
+  health: GET /health
+  images: GET /images
+  posts: GET /posts/:id
+  post_images: GET /posts/:id/images
+  suggestion: GET /suggestions/:id
+  review_approve: POST /suggestions/:id/approve
+  review_reject: POST /suggestions/:id/reject
