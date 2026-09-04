@@ -3,38 +3,39 @@ import test, { after } from "node:test";
 
 import { pool } from "../../app/db/pool.js";
 import {
-  createImageEmbedding,
-  findImageEmbedding,
-  findImageEmbeddingsByImageId,
-  deleteImageEmbedding
-} from "../../app/repositories/image-embedding-repository.js";
-import { createImage } from "../../app/repositories/image-repository.js";
+  createPostEmbedding,
+  findPostEmbedding,
+  findPostEmbeddingsByPostId,
+  deletePostEmbedding
+} from "../../app/repositories/post-embedding-repository.js";
+import { createPost } from "../../app/repositories/post-repository.js";
 
-test("image embedding repository persists, retrieves, lists, and deletes embeddings", async () => {
-  const image = await createImage({
-    filename: `embedding-test-${Date.now()}.jpg`,
-    category: "medical_equipment"
+test("post embedding repository persists, retrieves, lists, and deletes embeddings", async () => {
+  const post = await createPost({
+    title: `Embedding test ${Date.now()}`,
+    content: "A hospital patient monitor is used to display vital signs."
   });
 
   const model = "test-embedding-model";
   const modelVersion = "v1";
+
   const embedding = [0.12, 0.34, 0.56, 0.78];
 
-  const created = await createImageEmbedding({
-    imageId: image.id,
+  const created = await createPostEmbedding({
+    postId: post.id,
     model,
     modelVersion,
     embedding
   });
 
   assert.ok(created.id);
-  assert.equal(created.image_id, image.id);
+  assert.equal(created.post_id, post.id);
   assert.equal(created.model, model);
   assert.equal(created.model_version, modelVersion);
   assert.deepEqual(created.embedding, embedding);
 
-  const found = await findImageEmbedding({
-    imageId: image.id,
+  const found = await findPostEmbedding({
+    postId: post.id,
     model,
     modelVersion
   });
@@ -44,7 +45,7 @@ test("image embedding repository persists, retrieves, lists, and deletes embeddi
   assert.deepEqual(found.embedding, embedding);
 
   const allEmbeddings =
-    await findImageEmbeddingsByImageId(image.id);
+    await findPostEmbeddingsByPostId(post.id);
 
   assert.ok(
     allEmbeddings.some(
@@ -52,8 +53,8 @@ test("image embedding repository persists, retrieves, lists, and deletes embeddi
     )
   );
 
-  const deleted = await deleteImageEmbedding({
-    imageId: image.id,
+  const deleted = await deletePostEmbedding({
+    postId: post.id,
     model,
     modelVersion
   });
@@ -61,8 +62,8 @@ test("image embedding repository persists, retrieves, lists, and deletes embeddi
   assert.ok(deleted);
   assert.equal(deleted.id, created.id);
 
-  const afterDelete = await findImageEmbedding({
-    imageId: image.id,
+  const afterDelete = await findPostEmbedding({
+    postId: post.id,
     model,
     modelVersion
   });
@@ -70,8 +71,8 @@ test("image embedding repository persists, retrieves, lists, and deletes embeddi
   assert.equal(afterDelete, null);
 
   await pool.query(
-    "DELETE FROM images WHERE id = $1",
-    [image.id]
+    "DELETE FROM posts WHERE id = $1",
+    [post.id]
   );
 });
 
