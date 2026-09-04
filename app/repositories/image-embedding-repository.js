@@ -97,3 +97,30 @@ export async function deleteImageEmbedding({
 
   return result.rows[0] ?? null;
 }
+
+export async function findImageEmbeddingsWithMetadata({
+  model,
+  modelVersion
+}) {
+  const result = await pool.query(
+    `
+      SELECT
+        ie.image_id,
+        ie.model,
+        ie.model_version,
+        ie.embedding,
+        im.subject,
+        im.category,
+        im.caption,
+        im.confidence
+      FROM image_embeddings ie
+      JOIN image_metadata im
+        ON im.image_id = ie.image_id
+      WHERE ie.model = $1
+        AND ie.model_version = $2
+    `,
+    [model, modelVersion]
+  );
+
+  return result.rows;
+}
