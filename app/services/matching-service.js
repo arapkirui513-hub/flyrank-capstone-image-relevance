@@ -25,25 +25,31 @@ export class MatchingService {
       return [];
     }
 
-    const imageEmbeddings =
-      await this.imageEmbeddingRepository.findAllImageEmbeddings();
+    const candidates =
+      await this.imageEmbeddingRepository
+        .findImageEmbeddingsWithMetadata({
+          model: this.model,
+          modelVersion: this.modelVersion
+        });
 
-    if (imageEmbeddings.length === 0) {
+    if (candidates.length === 0) {
       return [];
     }
 
-    const results = imageEmbeddings.map((imageEmbedding) => ({
-      imageId: imageEmbedding.image_id,
-      similarityScore: cosineSimilarity(
-        postEmbedding.embedding,
-        imageEmbedding.embedding
-      )
-    }));
+    const ranked = candidates
+      .map((candidate) => ({
+        imageId: candidate.image_id,
+        subject: candidate.subject,
+        category: candidate.category,
+        confidence: Number(candidate.confidence),
+        similarity: cosineSimilarity(
+          postEmbedding.embedding,
+          candidate.embedding
+        )
+      }))
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, limit);
 
-    results.sort(
-      (a, b) => b.similarityScore - a.similarityScore
-    );
-
-    return results.slice(0, limit);
+    return ranked;
   }
 }

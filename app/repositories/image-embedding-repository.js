@@ -53,7 +53,11 @@ export async function findImageEmbedding({
         AND model = $2
         AND model_version = $3
     `,
-    [imageId, model, modelVersion]
+    [
+      imageId,
+      model,
+      modelVersion
+    ]
   );
 
   return result.rows[0] ?? null;
@@ -71,9 +75,60 @@ export async function findImageEmbeddingsByImageId(imageId) {
         created_at
       FROM image_embeddings
       WHERE image_id = $1
-      ORDER BY created_at DESC
+      ORDER BY created_at ASC
     `,
     [imageId]
+  );
+
+  return result.rows;
+}
+
+export async function findAllImageEmbeddings() {
+  const result = await pool.query(
+    `
+      SELECT
+        id,
+        image_id,
+        model,
+        model_version,
+        embedding,
+        created_at
+      FROM image_embeddings
+      ORDER BY created_at ASC
+    `
+  );
+
+  return result.rows;
+}
+
+export async function findImageEmbeddingsWithMetadata({
+  model,
+  modelVersion
+}) {
+  const result = await pool.query(
+    `
+      SELECT
+        ie.image_id,
+        ie.model,
+        ie.model_version,
+        ie.embedding,
+        i.category,
+        im.subject,
+        im.attributes,
+        im.caption,
+        im.confidence
+      FROM image_embeddings ie
+      JOIN image_metadata im
+        ON im.image_id = ie.image_id
+      JOIN images i
+        ON i.id = ie.image_id
+      WHERE ie.model = $1
+        AND ie.model_version = $2
+    `,
+    [
+      model,
+      modelVersion
+    ]
   );
 
   return result.rows;
@@ -90,37 +145,20 @@ export async function deleteImageEmbedding({
       WHERE image_id = $1
         AND model = $2
         AND model_version = $3
-      RETURNING id
+      RETURNING
+        id,
+        image_id,
+        model,
+        model_version,
+        embedding,
+        created_at
     `,
-    [imageId, model, modelVersion]
+    [
+      imageId,
+      model,
+      modelVersion
+    ]
   );
 
   return result.rows[0] ?? null;
-}
-
-export async function findImageEmbeddingsWithMetadata({
-  model,
-  modelVersion
-}) {
-  const result = await pool.query(
-    `
-      SELECT
-        ie.image_id,
-        ie.model,
-        ie.model_version,
-        ie.embedding,
-        im.subject,
-        im.category,
-        im.caption,
-        im.confidence
-      FROM image_embeddings ie
-      JOIN image_metadata im
-        ON im.image_id = ie.image_id
-      WHERE ie.model = $1
-        AND ie.model_version = $2
-    `,
-    [model, modelVersion]
-  );
-
-  return result.rows;
 }

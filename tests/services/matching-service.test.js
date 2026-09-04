@@ -3,48 +3,39 @@ import test from "node:test";
 
 import { MatchingService } from "../../app/services/matching-service.js";
 
+const imageEmbeddings = [
+  {
+    image_id: "img-1",
+    subject: "patient monitor",
+    category: "medical_equipment",
+    confidence: 0.95,
+    embedding: [1, 0]
+  },
+  {
+    image_id: "img-2",
+    subject: "defibrillator",
+    category: "medical_equipment",
+    confidence: 0.90,
+    embedding: [0, 1]
+  }
+];
+
 function createDependencies(overrides = {}) {
-  const postEmbedding = {
-    id: "post-embedding-1",
-    post_id: "post-1",
-    model: "mock-embedding",
-    model_version: "v1",
-    embedding: [1, 0, 0]
-  };
-
-  const imageEmbeddings = [
-    {
-      id: "image-embedding-1",
-      image_id: "image-a",
-      model: "mock-embedding",
-      model_version: "v1",
-      embedding: [1, 0, 0]
-    },
-    {
-      id: "image-embedding-2",
-      image_id: "image-b",
-      model: "mock-embedding",
-      model_version: "v1",
-      embedding: [0, 1, 0]
-    },
-    {
-      id: "image-embedding-3",
-      image_id: "image-c",
-      model: "mock-embedding",
-      model_version: "v1",
-      embedding: [-1, 0, 0]
-    }
-  ];
-
   return {
     postEmbeddingRepository: {
-      async findPostEmbedding() {
-        return postEmbedding;
+      async findPostEmbedding({ postId }) {
+        if (postId === "post-1") {
+          return {
+            embedding: [1, 0]
+          };
+        }
+
+        return null;
       }
     },
 
     imageEmbeddingRepository: {
-      async findAllImageEmbeddings() {
+      async findImageEmbeddingsWithMetadata() {
         return imageEmbeddings;
       }
     },
@@ -63,15 +54,13 @@ test("matching service ranks image candidates by cosine similarity", async () =>
 
   const results = await service.matchPost("post-1");
 
-  assert.equal(results.length, 3);
+  assert.equal(results.length, 2);
 
-  assert.equal(results[0].imageId, "image-a");
-  assert.equal(results[1].imageId, "image-b");
-  assert.equal(results[2].imageId, "image-c");
+  assert.equal(results[0].imageId, "img-1");
+  assert.equal(results[1].imageId, "img-2");
 
-  assert.equal(results[0].similarityScore, 1);
-  assert.equal(results[1].similarityScore, 0);
-  assert.equal(results[2].similarityScore, -1);
+  assert.equal(results[0].similarity, 1);
+  assert.equal(results[1].similarity, 0);
 });
 
 test("matching service returns an empty list when the post has no embedding", async () => {
@@ -93,7 +82,7 @@ test("matching service returns an empty list when the post has no embedding", as
 test("matching service returns an empty list when there are no image embeddings", async () => {
   const dependencies = createDependencies({
     imageEmbeddingRepository: {
-      async findAllImageEmbeddings() {
+      async findImageEmbeddingsWithMetadata() {
         return [];
       }
     }
@@ -109,14 +98,14 @@ test("matching service returns an empty list when there are no image embeddings"
 test("matching service rejects embeddings with different dimensions", async () => {
   const dependencies = createDependencies({
     imageEmbeddingRepository: {
-      async findAllImageEmbeddings() {
+      async findImageEmbeddingsWithMetadata() {
         return [
           {
-            id: "image-embedding-1",
-            image_id: "image-a",
-            model: "mock-embedding",
-            model_version: "v1",
-            embedding: [1, 0]
+            image_id: "img-1",
+            subject: "patient monitor",
+            category: "medical_equipment",
+            confidence: 0.95,
+            embedding: [1, 0, 0]
           }
         ];
       }
@@ -136,11 +125,7 @@ test("matching service rejects zero-magnitude vectors", async () => {
     postEmbeddingRepository: {
       async findPostEmbedding() {
         return {
-          id: "post-embedding-1",
-          post_id: "post-1",
-          model: "mock-embedding",
-          model_version: "v1",
-          embedding: [0, 0, 0]
+          embedding: [0, 0]
         };
       }
     }
@@ -160,10 +145,31 @@ test("matching service supports limiting ranked results", async () => {
   const service = new MatchingService(dependencies);
 
   const results = await service.matchPost("post-1", {
-    limit: 2
+    limit: 1
   });
 
+  assert.equal(results.length, 1);
+  assert.equal(results[0].imageId, "img-1");
+});
+
+test("matching service returns metadata required for guard evaluation", async () => {
+  const dependencies = createDependencies();
+
+  const service = new MatchingService(dependencies);
+
+  const results = await service.matchPost("post-1");
+
   assert.equal(results.length, 2);
-  assert.equal(results[0].imageId, "image-a");
-  assert.equal(results[1].imageId, "image-b");
+
+  assert.equal(results[0].imageId, "img-1");
+  assert.equal(results[0].subject, "patient monitor");
+  assert.equal(results[0].category, "medical_equipment");
+  assert.equal(results[0].confidence, 0.95);
+  assert.equal(results[0].similarity, 1);
+
+  assert.equal(results[1].imageId, "img-2");
+  assert.equal(results[1].subject, "defibrillator");
+  assert.equal(results[1].category, "medical_equipment");
+  assert.equal(results[1].confidence, 0.90);
+  assert.equal(results[1].similarity, 0);
 });

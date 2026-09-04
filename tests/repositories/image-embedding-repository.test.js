@@ -6,9 +6,11 @@ import {
   createImageEmbedding,
   findImageEmbedding,
   findImageEmbeddingsByImageId,
+  findImageEmbeddingsWithMetadata,
   deleteImageEmbedding
 } from "../../app/repositories/image-embedding-repository.js";
 import { createImage } from "../../app/repositories/image-repository.js";
+import { createImageMetadata } from "../../app/repositories/image-metadata-repository.js";
 
 test("image embedding repository persists, retrieves, lists, and deletes embeddings", async () => {
   const image = await createImage({
@@ -68,6 +70,48 @@ test("image embedding repository persists, retrieves, lists, and deletes embeddi
   });
 
   assert.equal(afterDelete, null);
+
+  await pool.query(
+    "DELETE FROM images WHERE id = $1",
+    [image.id]
+  );
+});
+
+test("findImageEmbeddingsWithMetadata joins embedding with image and metadata", async () => {
+  const image = await createImage({
+    filename: `join-test-${Date.now()}.jpg`,
+    category: "medical_equipment"
+  });
+
+  await createImageMetadata({
+    imageId: image.id,
+    subject: "patient monitor",
+    attributes: [],
+    caption: "A patient monitor",
+    confidence: 0.92
+  });
+
+  await createImageEmbedding({
+    imageId: image.id,
+    model: "test-embedding",
+    modelVersion: "v1",
+    embedding: [0.1, 0.2]
+  });
+
+  const rows = await findImageEmbeddingsWithMetadata({
+    model: "test-embedding",
+    modelVersion: "v1"
+  });
+
+  const row = rows.find(
+    (item) => item.image_id === image.id
+  );
+
+  assert.ok(row);
+  assert.equal(row.category, "medical_equipment");
+  assert.equal(row.subject, "patient monitor");
+  assert.equal(Number(row.confidence), 0.92);
+  assert.deepEqual(row.embedding, [0.1, 0.2]);
 
   await pool.query(
     "DELETE FROM images WHERE id = $1",
