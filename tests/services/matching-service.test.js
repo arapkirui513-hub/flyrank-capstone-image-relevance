@@ -44,14 +44,13 @@ function createDependencies(overrides = {}) {
     },
 
     imageEmbeddingRepository: {
-      async findImageEmbeddingsByImageId() {
-        return [];
-      },
-
       async findAllImageEmbeddings() {
         return imageEmbeddings;
       }
     },
+
+    model: "mock-embedding",
+    modelVersion: "v1",
 
     ...overrides
   };

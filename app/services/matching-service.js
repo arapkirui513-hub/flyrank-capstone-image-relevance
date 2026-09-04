@@ -3,18 +3,22 @@ import { cosineSimilarity } from "../domain/similarity.js";
 export class MatchingService {
   constructor({
     postEmbeddingRepository,
-    imageEmbeddingRepository
+    imageEmbeddingRepository,
+    model,
+    modelVersion
   }) {
     this.postEmbeddingRepository = postEmbeddingRepository;
     this.imageEmbeddingRepository = imageEmbeddingRepository;
+    this.model = model;
+    this.modelVersion = modelVersion;
   }
 
   async matchPost(postId, { limit = 10 } = {}) {
     const postEmbedding =
       await this.postEmbeddingRepository.findPostEmbedding({
         postId,
-        model: "mock-embedding",
-        modelVersion: "v1"
+        model: this.model,
+        modelVersion: this.modelVersion
       });
 
     if (!postEmbedding) {
