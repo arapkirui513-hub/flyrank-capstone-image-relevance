@@ -19,7 +19,7 @@ Evidence:
 Status: NOT YET VERIFIED
 
 Target:
-- 40–50 images
+- 40-50 images
 - 4 categories
 
 Required evidence:
@@ -73,3 +73,13 @@ Status: NOT IMPLEMENTED
 ### 11. AI cost tracking
 
 Status: NOT IMPLEMENTED
+
+### GPL-licensed Wikimedia images
+
+Three sterilizer images (`st-006`, `st-007`, and `st-008`) were identified through the Wikimedia provenance audit with the GNU General Public License (GPL).
+
+The license was manually confirmed against the Wikimedia Commons source pages. The GPL designation was therefore treated as genuine rather than corrected to GFDL.
+
+Although the images are validly sourced and their local SHA-256 hashes match the recorded values, they were excluded from the final corpus because GPL licensing introduces a less straightforward redistribution/source-availability question for photographic assets than the licenses used by the replacement candidates.
+
+The exclusion is a corpus-curation decision, not a claim that the images were improperly licensed.
