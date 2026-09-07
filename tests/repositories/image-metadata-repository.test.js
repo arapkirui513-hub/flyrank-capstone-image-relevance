@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import { pool } from "../../app/db/pool.js";
