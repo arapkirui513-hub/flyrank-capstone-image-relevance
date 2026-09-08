@@ -76,7 +76,37 @@ export class GeminiVisionProvider extends VisionProvider {
           }
         ],
         generationConfig: {
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              subject: {
+                type: "STRING"
+              },
+              category: {
+                type: "STRING"
+              },
+              attributes: {
+                type: "ARRAY",
+                items: {
+                  type: "STRING"
+                }
+              },
+              caption: {
+                type: "STRING"
+              },
+              confidence: {
+                type: "NUMBER"
+              }
+            },
+            required: [
+              "subject",
+              "category",
+              "attributes",
+              "caption",
+              "confidence"
+            ]
+          }
         }
       })
     });

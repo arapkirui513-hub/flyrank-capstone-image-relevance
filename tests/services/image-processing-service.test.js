@@ -120,6 +120,7 @@ test("image processing analyzes, embeds, persists, and completes an image", asyn
   assert.deepEqual(calls.metadata[0], {
     imageId: "image-1",
     subject: "patient monitor",
+    category: "medical_equipment",
     attributes: ["bedside", "vital signs", "display"],
     caption: "A patient monitor displaying vital signs.",
     confidence: 0.92

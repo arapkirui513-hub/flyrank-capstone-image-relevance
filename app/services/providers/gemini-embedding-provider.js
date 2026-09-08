@@ -3,7 +3,7 @@ import { EmbeddingProvider } from "./embedding-provider.js";
 export class GeminiEmbeddingProvider extends EmbeddingProvider {
   constructor(
     apiKey = process.env.GEMINI_API_KEY,
-    model = process.env.EMBEDDING_MODEL || "gemini-embedding-2",
+    model = process.env.EMBEDDING_MODEL || "gemini-embedding-001",
     fetchImpl = fetch
   ) {
     super();

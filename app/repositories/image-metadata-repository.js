@@ -1,8 +1,9 @@
-﻿import { pool } from "../db/pool.js";
+import { pool } from "../db/pool.js";
 
 export async function createImageMetadata({
   imageId,
   subject,
+  category,
   attributes = [],
   caption,
   confidence
@@ -12,14 +13,16 @@ export async function createImageMetadata({
       INSERT INTO image_metadata (
         image_id,
         subject,
+        category,
         attributes,
         caption,
         confidence
       )
-      VALUES ($1, $2, $3::jsonb, $4, $5)
+      VALUES ($1, $2, $3, $4::jsonb, $5, $6)
       RETURNING
         image_id,
         subject,
+        category,
         attributes,
         caption,
         confidence
@@ -27,6 +30,7 @@ export async function createImageMetadata({
     [
       imageId,
       subject,
+      category,
       JSON.stringify(attributes),
       caption,
       confidence
@@ -42,6 +46,7 @@ export async function findImageMetadataByImageId(imageId) {
       SELECT
         image_id,
         subject,
+        category,
         attributes,
         caption,
         confidence
@@ -58,6 +63,7 @@ export async function updateImageMetadata(
   imageId,
   {
     subject,
+    category,
     attributes = [],
     caption,
     confidence
@@ -68,13 +74,15 @@ export async function updateImageMetadata(
       UPDATE image_metadata
       SET
         subject = $2,
-        attributes = $3::jsonb,
-        caption = $4,
-        confidence = $5
+        category = $3,
+        attributes = $4::jsonb,
+        caption = $5,
+        confidence = $6
       WHERE image_id = $1
       RETURNING
         image_id,
         subject,
+        category,
         attributes,
         caption,
         confidence
@@ -82,6 +90,7 @@ export async function updateImageMetadata(
     [
       imageId,
       subject,
+      category,
       JSON.stringify(attributes),
       caption,
       confidence

@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import test, { after } from "node:test";
 
 import { pool } from "../../app/db/pool.js";
@@ -18,6 +18,7 @@ test("image metadata persists, retrieves, updates, and cascades on image deletio
   const created = await createImageMetadata({
     imageId: image.id,
     subject: "defibrillator",
+    category: "medical_equipment",
     attributes: [
       "portable",
       "control buttons",
@@ -29,6 +30,7 @@ test("image metadata persists, retrieves, updates, and cascades on image deletio
 
   assert.equal(created.image_id, image.id);
   assert.equal(created.subject, "defibrillator");
+  assert.equal(created.category, "medical_equipment");
   assert.deepEqual(created.attributes, [
     "portable",
     "control buttons",
@@ -42,6 +44,7 @@ test("image metadata persists, retrieves, updates, and cascades on image deletio
   assert.ok(found);
   assert.equal(found.image_id, image.id);
   assert.equal(found.subject, "defibrillator");
+  assert.equal(found.category, "medical_equipment");
   assert.deepEqual(found.attributes, [
     "portable",
     "control buttons",
@@ -50,6 +53,7 @@ test("image metadata persists, retrieves, updates, and cascades on image deletio
 
   const updated = await updateImageMetadata(image.id, {
     subject: "automated_external_defibrillator",
+    category: "automated_defibrillator",
     attributes: [
       "portable",
       "display",
@@ -63,6 +67,10 @@ test("image metadata persists, retrieves, updates, and cascades on image deletio
   assert.equal(
     updated.subject,
     "automated_external_defibrillator"
+  );
+  assert.equal(
+    updated.category,
+    "automated_defibrillator"
   );
   assert.deepEqual(updated.attributes, [
     "portable",

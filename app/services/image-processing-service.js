@@ -63,6 +63,7 @@ export class ImageProcessingService {
         await this.imageMetadataRepository.createImageMetadata({
           imageId,
           subject: metadata.subject,
+          category: metadata.category,
           attributes: metadata.attributes,
           caption: metadata.caption,
           confidence: metadata.confidence

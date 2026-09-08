@@ -86,6 +86,7 @@ test("findImageEmbeddingsWithMetadata joins embedding with image and metadata", 
   await createImageMetadata({
     imageId: image.id,
     subject: "patient monitor",
+    category: "medical_equipment",
     attributes: [],
     caption: "A patient monitor",
     confidence: 0.92

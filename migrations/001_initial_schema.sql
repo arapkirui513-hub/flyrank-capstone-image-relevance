@@ -15,6 +15,7 @@ CREATE TABLE images (
 CREATE TABLE image_metadata (
     image_id UUID PRIMARY KEY REFERENCES images(id) ON DELETE CASCADE,
     subject TEXT NOT NULL,
+    category TEXT NOT NULL,
     attributes JSONB NOT NULL DEFAULT '[]'::jsonb,
     caption TEXT NOT NULL,
     confidence NUMERIC(4,3) NOT NULL,
