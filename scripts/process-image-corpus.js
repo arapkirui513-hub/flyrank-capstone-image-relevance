@@ -106,8 +106,8 @@ const service = new ImageProcessingService({
   visionProvider: new GeminiVisionProvider(),
   embeddingProvider: new GeminiEmbeddingProvider(),
 
-  imageLoader: async (filename) => {
-    return fs.readFile(path.resolve(filename));
+  imageLoader: async (image) => {
+    return fs.readFile(path.resolve(image.filename));
   },
 
   embeddingModel:
