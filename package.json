@@ -4,8 +4,8 @@
   "description": "AI image understanding and content matching engine for the FlyRank Backend Track capstone",
   "type": "module",
   "scripts": {
-    "dev": "node --watch app/main.js",
-    "start": "node app/main.js",
+    "dev": "node --env-file=.env --watch app/main.js",
+    "start": "node --env-file=.env app/main.js",
     "test": "node --test",
     "lint": "eslint ."
   },
