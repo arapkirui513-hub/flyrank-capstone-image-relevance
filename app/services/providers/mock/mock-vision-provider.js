@@ -14,7 +14,7 @@ export class MockVisionProvider extends VisionProvider {
     };
   }
 
-  async analyzeImage(_imageBuffer) {
+  async analyzeImage() {
     return this.metadata;
   }
 }

@@ -7,7 +7,7 @@ export class MockEmbeddingProvider extends EmbeddingProvider {
     this.embedding = embedding;
   }
 
-  async embedText(_text) {
+  async embedText() {
     return this.embedding;
   }
 }

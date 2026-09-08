@@ -1,5 +1,5 @@
 export class VisionProvider {
-  async analyzeImage(_imageBuffer) {
+  async analyzeImage() {
     throw new Error(
       "VisionProvider.analyzeImage() must be implemented by a provider."
     );
