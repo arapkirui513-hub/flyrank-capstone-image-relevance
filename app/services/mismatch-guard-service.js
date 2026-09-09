@@ -1,8 +1,10 @@
 import {
   GUARD_DECISIONS,
   REJECTION_REASONS,
-  THRESHOLDS
+  THRESHOLDS,
+  normalizeSubject
 } from "../domain/constants.js";
+
 import { guardResultSchema } from "../domain/schemas.js";
 
 function buildSubjectMismatchReason(expectedSubject, detectedSubject) {
@@ -37,7 +39,10 @@ export class MismatchGuardService {
       });
     }
 
-    if (expectedSubject !== detectedSubject) {
+    const normalizedExpected = normalizeSubject(expectedSubject);
+    const normalizedDetected = normalizeSubject(detectedSubject);
+
+    if (normalizedExpected !== normalizedDetected) {
       return guardResultSchema.parse({
         decision: GUARD_DECISIONS.REJECTED,
         similarityScore,
@@ -55,3 +60,5 @@ export class MismatchGuardService {
     });
   }
 }
+
+export default MismatchGuardService;
