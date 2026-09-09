@@ -31,56 +31,54 @@ test("review repository persists, retrieves, lists, and deletes reviews", async 
     guardVersion: "v1"
   });
 
-  const created = await createReview({
-    suggestionId: suggestion.id,
-    decision: "approved",
-    reason: "Image and post are relevant."
-  });
+  try {
+    const created = await createReview({
+      suggestionId: suggestion.id,
+      decision: "approved",
+      reason: "Image and post are relevant."
+    });
 
-  assert.ok(created.id);
-  assert.equal(created.suggestion_id, suggestion.id);
-  assert.equal(created.decision, "approved");
-  assert.equal(created.reason, "Image and post are relevant.");
-  assert.ok(created.reviewed_at);
+    assert.ok(created.id);
+    assert.equal(created.suggestion_id, suggestion.id);
+    assert.equal(created.decision, "approved");
+    assert.equal(created.reason, "Image and post are relevant.");
+    assert.ok(created.reviewed_at);
 
-  const found = await findReviewById(created.id);
+    const found = await findReviewById(created.id);
 
-  assert.ok(found);
-  assert.equal(found.id, created.id);
-  assert.equal(found.suggestion_id, suggestion.id);
-  assert.equal(found.decision, "approved");
+    assert.ok(found);
+    assert.equal(found.id, created.id);
+    assert.equal(found.suggestion_id, suggestion.id);
+    assert.equal(found.decision, "approved");
 
-  const reviews = await findReviewsBySuggestionId(
-    suggestion.id
-  );
+    const reviews = await findReviewsBySuggestionId(suggestion.id);
 
-  assert.ok(
-    reviews.some((review) => review.id === created.id)
-  );
+    assert.ok(reviews.some((review) => review.id === created.id));
 
-  const deleted = await deleteReview(created.id);
+    const deleted = await deleteReview(created.id);
 
-  assert.ok(deleted);
-  assert.equal(deleted.id, created.id);
+    assert.ok(deleted);
+    assert.equal(deleted.id, created.id);
 
-  const afterDelete = await findReviewById(created.id);
+    const afterDelete = await findReviewById(created.id);
 
-  assert.equal(afterDelete, null);
+    assert.equal(afterDelete, null);
+  } finally {
+    await pool.query(
+      "DELETE FROM suggestions WHERE id = $1",
+      [suggestion.id]
+    );
 
-  await pool.query(
-    "DELETE FROM suggestions WHERE id = $1",
-    [suggestion.id]
-  );
+    await pool.query(
+      "DELETE FROM posts WHERE id = $1",
+      [post.id]
+    );
 
-  await pool.query(
-    "DELETE FROM posts WHERE id = $1",
-    [post.id]
-  );
-
-  await pool.query(
-    "DELETE FROM images WHERE id = $1",
-    [image.id]
-  );
+    await pool.query(
+      "DELETE FROM images WHERE id = $1",
+      [image.id]
+    );
+  }
 });
 
 test("review repository supports rejected reviews with a reason", async () => {
@@ -103,34 +101,36 @@ test("review repository supports rejected reviews with a reason", async () => {
     guardVersion: "v1"
   });
 
-  const review = await createReview({
-    suggestionId: suggestion.id,
-    decision: "rejected",
-    reason: "The image does not match the article."
-  });
+  try {
+    const review = await createReview({
+      suggestionId: suggestion.id,
+      decision: "rejected",
+      reason: "The image does not match the article."
+    });
 
-  assert.equal(review.decision, "rejected");
-  assert.equal(
-    review.reason,
-    "The image does not match the article."
-  );
+    assert.equal(review.decision, "rejected");
+    assert.equal(
+      review.reason,
+      "The image does not match the article."
+    );
 
-  await deleteReview(review.id);
+    await deleteReview(review.id);
+  } finally {
+    await pool.query(
+      "DELETE FROM suggestions WHERE id = $1",
+      [suggestion.id]
+    );
 
-  await pool.query(
-    "DELETE FROM suggestions WHERE id = $1",
-    [suggestion.id]
-  );
+    await pool.query(
+      "DELETE FROM posts WHERE id = $1",
+      [post.id]
+    );
 
-  await pool.query(
-    "DELETE FROM posts WHERE id = $1",
-    [post.id]
-  );
-
-  await pool.query(
-    "DELETE FROM images WHERE id = $1",
-    [image.id]
-  );
+    await pool.query(
+      "DELETE FROM images WHERE id = $1",
+      [image.id]
+    );
+  }
 });
 
 test("deleting a suggestion cascades to its reviews", async () => {
@@ -152,30 +152,37 @@ test("deleting a suggestion cascades to its reviews", async () => {
     guardVersion: "v1"
   });
 
-  const review = await createReview({
-    suggestionId: suggestion.id,
-    decision: "approved",
-    reason: "Verified by reviewer."
-  });
+  try {
+    const review = await createReview({
+      suggestionId: suggestion.id,
+      decision: "approved",
+      reason: "Verified by reviewer."
+    });
 
-  await pool.query(
-    "DELETE FROM suggestions WHERE id = $1",
-    [suggestion.id]
-  );
+    await pool.query(
+      "DELETE FROM suggestions WHERE id = $1",
+      [suggestion.id]
+    );
 
-  const deletedReview = await findReviewById(review.id);
+    const deletedReview = await findReviewById(review.id);
 
-  assert.equal(deletedReview, null);
+    assert.equal(deletedReview, null);
+  } finally {
+    await pool.query(
+      "DELETE FROM suggestions WHERE id = $1",
+      [suggestion.id]
+    );
 
-  await pool.query(
-    "DELETE FROM posts WHERE id = $1",
-    [post.id]
-  );
+    await pool.query(
+      "DELETE FROM posts WHERE id = $1",
+      [post.id]
+    );
 
-  await pool.query(
-    "DELETE FROM images WHERE id = $1",
-    [image.id]
-  );
+    await pool.query(
+      "DELETE FROM images WHERE id = $1",
+      [image.id]
+    );
+  }
 });
 
 after(async () => {

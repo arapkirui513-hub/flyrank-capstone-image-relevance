@@ -19,6 +19,13 @@ export async function createImageMetadata({
         confidence
       )
       VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+      ON CONFLICT (image_id)
+      DO UPDATE SET
+        subject = EXCLUDED.subject,
+        category = EXCLUDED.category,
+        attributes = EXCLUDED.attributes,
+        caption = EXCLUDED.caption,
+        confidence = EXCLUDED.confidence
       RETURNING
         image_id,
         subject,

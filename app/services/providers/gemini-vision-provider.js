@@ -39,7 +39,7 @@ export class GeminiVisionProvider extends VisionProvider {
     this.fetchImpl = fetchImpl;
   }
 
-  async analyzeImage(imageBuffer) {
+  async analyzeImage(imageBuffer, mimeType = "image/jpeg") {
     if (!Buffer.isBuffer(imageBuffer)) {
       throw new TypeError("GeminiVisionProvider requires a Buffer.");
     }
@@ -68,7 +68,7 @@ export class GeminiVisionProvider extends VisionProvider {
               },
               {
                 inlineData: {
-                  mimeType: "image/jpeg",
+                  mimeType,
                   data: imageBuffer.toString("base64")
                 }
               }

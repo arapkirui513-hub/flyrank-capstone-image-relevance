@@ -1,6 +1,24 @@
 import { visionMetadataSchema } from "../domain/schemas.js";
 import { THRESHOLDS } from "../domain/constants.js";
 
+function getImageMimeType(filename) {
+  const extension = filename.toLowerCase().split(".").pop();
+
+  const mimeTypes = {
+    jpg: "image/jpeg",
+    jpeg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp"
+  };
+
+  const mimeType = mimeTypes[extension];
+
+  if (!mimeType) {
+    throw new Error(`Unsupported image format: ${extension}`);
+  }
+
+  return mimeType;
+}
 export class ImageProcessingService {
   constructor({
     imageRepository,
@@ -46,7 +64,10 @@ export class ImageProcessingService {
       const imageBuffer = await this.imageLoader(image);
 
       const rawMetadata =
-        await this.visionProvider.analyzeImage(imageBuffer);
+        await this.visionProvider.analyzeImage(
+          imageBuffer,
+          getImageMimeType(image.filename)
+        );
 
       const metadata = visionMetadataSchema.parse(rawMetadata);
 

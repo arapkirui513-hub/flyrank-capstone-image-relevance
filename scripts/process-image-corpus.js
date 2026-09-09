@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { pool } from "../app/db/pool.js";
-import { createImage } from "../app/repositories/image-repository.js";
+import { createImage, findImageByFilename } from "../app/repositories/image-repository.js";
 import { createImageMetadata } from "../app/repositories/image-metadata-repository.js";
 import { createImageEmbedding } from "../app/repositories/image-embedding-repository.js";
 import { createAiCostLog } from "../app/repositories/ai-cost-log-repository.js";
@@ -121,44 +121,86 @@ const service = new ImageProcessingService({
 });
 
 const results = [];
+function isQuotaOrRateLimitError(error) {
+  const message =
+    error instanceof Error ? error.message : String(error);
+
+  return (
+    message.includes("quota") ||
+    message.includes("rate limit") ||
+    message.includes("rate-limit") ||
+    message.includes("429") ||
+    message.includes("RESOURCE_EXHAUSTED")
+  );
+}
 
 for (const absolutePath of imagePaths) {
   const relativePath = path.relative(process.cwd(), absolutePath);
+  const normalizedPath = relativePath.split(path.sep).join("/");
   const category = path.basename(path.dirname(absolutePath));
 
-  console.log(`\nProcessing: ${relativePath}`);
+  console.log(`\nProcessing: ${normalizedPath}`);
 
   try {
-    const image = await createImage({
-      filename: relativePath,
-      category
-    });
+    let image = await findImageByFilename(normalizedPath);
+
+    if (image?.status === "completed") {
+      console.log(`SKIP | already completed`);
+
+      results.push({
+        category,
+        filename: normalizedPath,
+        success: true,
+        status: "completed",
+        skipped: true
+      });
+
+      continue;
+    }
+
+    if (!image) {
+      image = await createImage({
+        filename: normalizedPath,
+        category
+      });
+
+      console.log(`Created image record`);
+    } else {
+      console.log(`Reusing existing image | status=${image.status}`);
+    }
 
     const result = await service.processImage(image.id);
 
     results.push({
       category,
-      filename: relativePath,
+      filename: normalizedPath,
       success: true,
       status: result.image.status,
       confidence: result.metadata.confidence,
       embeddingDimensions: result.embedding.embedding?.length
     });
 
-    console.log(
-      `? completed | confidence=${result.metadata.confidence} | embedding=${result.embedding.embedding?.length}`
+        console.log(
+      `completed | confidence=${result.metadata.confidence} | embedding=${result.embedding.embedding?.length}`
     );
   } catch (error) {
+    const message =
+      error instanceof Error ? error.message : String(error);
+
+    console.error(`failed | ${message}`);
+
     results.push({
       category,
-      filename: relativePath,
+      filename: normalizedPath,
       success: false,
-      error: error instanceof Error ? error.message : String(error)
+      error: message
     });
 
-    console.error(
-      `? failed | ${error instanceof Error ? error.message : String(error)}`
-    );
+    if (isQuotaOrRateLimitError(error)) {
+      console.error(`STOP | Gemini quota/rate limit detected.`);
+      console.error(`Remaining images will not be processed in this run.`);
+      break;
+    }
   }
 }
 

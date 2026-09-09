@@ -15,6 +15,9 @@ export async function createImageEmbedding({
         embedding
       )
       VALUES ($1, $2, $3, $4::jsonb)
+      ON CONFLICT (image_id, model, model_version)
+      DO UPDATE SET
+        embedding = EXCLUDED.embedding
       RETURNING
         id,
         image_id,

@@ -38,7 +38,32 @@ export async function findImageById(id) {
   return result.rows[0] ?? null;
 }
 
-export async function findImages({ category, status, limit = 50, offset = 0 } = {}) {
+export async function findImageByFilename(filename) {
+  const result = await pool.query(
+    `
+      SELECT
+        id,
+        filename,
+        category,
+        status,
+        created_at,
+        updated_at
+      FROM images
+      WHERE filename = $1
+      LIMIT 1
+    `,
+    [filename]
+  );
+
+  return result.rows[0] ?? null;
+}
+
+export async function findImages({
+  category,
+  status,
+  limit = 50,
+  offset = 0
+} = {}) {
   const conditions = [];
   const values = [];
 

@@ -18,39 +18,41 @@ test("image repository persists and retrieves images", async () => {
     category
   });
 
-  assert.ok(created.id);
-  assert.equal(created.filename, filename);
-  assert.equal(created.category, category);
-  assert.equal(created.status, "pending");
+  try {
+    assert.ok(created.id);
+    assert.equal(created.filename, filename);
+    assert.equal(created.category, category);
+    assert.equal(created.status, "pending");
 
-  const found = await findImageById(created.id);
+    const found = await findImageById(created.id);
 
-  assert.ok(found);
-  assert.equal(found.id, created.id);
-  assert.equal(found.filename, filename);
+    assert.ok(found);
+    assert.equal(found.id, created.id);
+    assert.equal(found.filename, filename);
 
-  const updated = await updateImageStatus(
-    created.id,
-    "processing"
-  );
+    const updated = await updateImageStatus(
+      created.id,
+      "processing"
+    );
 
-  assert.ok(updated);
-  assert.equal(updated.id, created.id);
-  assert.equal(updated.status, "processing");
+    assert.ok(updated);
+    assert.equal(updated.id, created.id);
+    assert.equal(updated.status, "processing");
 
-  const filtered = await findImages({
-    category,
-    status: "processing"
-  });
+    const filtered = await findImages({
+      category,
+      status: "processing"
+    });
 
-  assert.ok(
-    filtered.some((image) => image.id === created.id)
-  );
-
-  await pool.query(
-    "DELETE FROM images WHERE id = $1",
-    [created.id]
-  );
+    assert.ok(
+      filtered.some((image) => image.id === created.id)
+    );
+  } finally {
+    await pool.query(
+      "DELETE FROM images WHERE id = $1",
+      [created.id]
+    );
+  }
 });
 
 after(async () => {
