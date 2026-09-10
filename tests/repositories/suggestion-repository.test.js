@@ -6,6 +6,7 @@ import {
   createSuggestion,
   findSuggestionById,
   findSuggestions,
+  findImagesByPostId,
   deleteSuggestion
 } from "../../app/repositories/suggestion-repository.js";
 import { createImage } from "../../app/repositories/image-repository.js";
@@ -53,6 +54,17 @@ test("suggestion repository persists, retrieves, filters, and deletes suggestion
       imageId: image.id,
       guardDecision: "accepted"
     });
+
+    const postImages = await findImagesByPostId(post.id);
+
+assert.ok(
+  postImages.some((result) => result.suggestion_id === created.id)
+);
+
+assert.equal(
+  postImages.find((result) => result.suggestion_id === created.id)?.id,
+  image.id
+);
 
     assert.ok(
       filtered.some((suggestion) => suggestion.id === created.id)

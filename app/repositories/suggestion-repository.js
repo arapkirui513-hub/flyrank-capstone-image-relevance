@@ -121,6 +121,39 @@ export async function findSuggestions({
   return result.rows;
 }
 
+export async function findImagesByPostId(postId, {
+  limit = 50,
+  offset = 0
+} = {}) {
+  const result = await pool.query(
+    `
+      SELECT
+        i.id,
+        i.filename,
+        i.category,
+        i.status,
+        i.created_at,
+        i.updated_at,
+        s.id AS suggestion_id,
+        s.similarity_score,
+        s.guard_decision,
+        s.rejection_reason,
+        s.guard_version,
+        s.created_at AS suggestion_created_at
+      FROM suggestions s
+      INNER JOIN images i
+        ON i.id = s.image_id
+      WHERE s.post_id = $1
+      ORDER BY s.created_at DESC
+      LIMIT $2
+      OFFSET $3
+    `,
+    [postId, limit, offset]
+  );
+
+  return result.rows;
+}
+
 export async function deleteSuggestion(id) {
   const result = await pool.query(
     `

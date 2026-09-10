@@ -1,4 +1,4 @@
-import { visionMetadataSchema } from "../domain/schemas.js";
+﻿import { visionMetadataSchema } from "../domain/schemas.js";
 import { THRESHOLDS } from "../domain/constants.js";
 
 function getImageMimeType(filename) {
@@ -19,6 +19,7 @@ function getImageMimeType(filename) {
 
   return mimeType;
 }
+
 export class ImageProcessingService {
   constructor({
     imageRepository,
@@ -46,7 +47,7 @@ export class ImageProcessingService {
     this.now = now;
   }
 
-  async processImage(imageId) {
+  async processImage(imageId, { jobId = null } = {}) {
     const image = await this.imageRepository.findImageById(imageId);
 
     if (!image) {
@@ -105,6 +106,7 @@ export class ImageProcessingService {
         );
 
       await this.logCost({
+        jobId,
         startedAt,
         success: true
       });
@@ -123,6 +125,7 @@ export class ImageProcessingService {
       );
 
       await this.logCost({
+        jobId,
         startedAt,
         success: false,
         errorMessage: error.message
@@ -133,6 +136,7 @@ export class ImageProcessingService {
   }
 
   async logCost({
+    jobId = null,
     startedAt,
     success,
     errorMessage = null
@@ -147,7 +151,7 @@ export class ImageProcessingService {
     );
 
     await this.aiCostLogRepository.createAiCostLog({
-      jobId: null,
+      jobId,
       operation: "image_processing",
       provider: "ai",
       model: this.visionModel,

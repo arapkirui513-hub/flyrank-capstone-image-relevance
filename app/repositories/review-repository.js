@@ -20,7 +20,11 @@ export async function createReview({
         reason,
         reviewed_at
     `,
-    [suggestionId, decision, reason]
+    [
+      suggestionId,
+      decision,
+      reason
+    ]
   );
 
   return result.rows[0];
@@ -44,7 +48,9 @@ export async function findReviewById(id) {
   return result.rows[0] ?? null;
 }
 
-export async function findReviewsBySuggestionId(suggestionId) {
+export async function findReviewsBySuggestionId(
+  suggestionId
+) {
   const result = await pool.query(
     `
       SELECT
@@ -61,6 +67,28 @@ export async function findReviewsBySuggestionId(suggestionId) {
   );
 
   return result.rows;
+}
+
+export async function findReviewBySuggestionId(
+  suggestionId
+) {
+  const result = await pool.query(
+    `
+      SELECT
+        id,
+        suggestion_id,
+        decision,
+        reason,
+        reviewed_at
+      FROM reviews
+      WHERE suggestion_id = $1
+      ORDER BY reviewed_at DESC
+      LIMIT 1
+    `,
+    [suggestionId]
+  );
+
+  return result.rows[0] ?? null;
 }
 
 export async function deleteReview(id) {

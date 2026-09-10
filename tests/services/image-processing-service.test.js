@@ -243,3 +243,18 @@ test("image processing rejects a missing image", async () => {
   assert.equal(calls.statuses.length, 0);
   assert.equal(calls.costs.length, 0);
 });
+
+test("image processing associates AI cost log with a job", async () => {
+  const { dependencies, calls } = createDependencies();
+
+  const service = new ImageProcessingService(dependencies);
+
+  await service.processImage("image-1", {
+    jobId: "job-123"
+  });
+
+  assert.equal(calls.costs.length, 1);
+  assert.equal(calls.costs[0].jobId, "job-123");
+  assert.equal(calls.costs[0].operation, "image_processing");
+  assert.equal(calls.costs[0].success, true);
+});
