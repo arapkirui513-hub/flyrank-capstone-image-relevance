@@ -1,11 +1,11 @@
-{
+﻿{
   "name": "flyrank-capstone-image-relevance",
   "version": "0.1.0",
   "description": "AI image understanding and content matching engine for the FlyRank Backend Track capstone",
   "type": "module",
   "scripts": {
     "dev": "node --env-file=.env --watch app/main.js",
-    "start": "node app/main.js",
+    "start": "node --env-file=.env app/main.js",
     "test": "node --env-file=.env --test",
     "lint": "eslint ."
   },
@@ -19,3 +19,4 @@
     "globals": "^17.12.0"
   }
 }
+

@@ -89,7 +89,7 @@ export function normalizeSubject(subject) {
     return subject;
   }
 
-  const normalized = subject.trim();
+  const normalized = subject.trim().toLowerCase();
 
   return SUBJECT_ALIASES[normalized] ?? normalized;
 }

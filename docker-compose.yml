@@ -17,6 +17,9 @@
       NODE_ENV: development
       PORT: 3000
       DATABASE_URL: postgresql://postgres:postgres@db:5432/image_relevance
+      VISION_PROVIDER:
+      GROQ_API_KEY:
+      GROQ_VISION_MODEL:
       GEMINI_API_KEY:
       VISION_MODEL:
       EMBEDDING_MODEL:

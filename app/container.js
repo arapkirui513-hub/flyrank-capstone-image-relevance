@@ -19,12 +19,16 @@ import SuggestionGenerationService from "./services/suggestion-generation-servic
 
 import GeminiEmbeddingProvider from "./services/providers/gemini-embedding-provider.js";
 import { GeminiVisionProvider } from "./services/providers/gemini-vision-provider.js";
+import { GroqVisionProvider } from "./services/providers/groq-vision-provider.js";
 
 const embeddingModel =
   process.env.EMBEDDING_MODEL || "gemini-embedding-001";
 
 const embeddingModelVersion =
   process.env.EMBEDDING_MODEL_VERSION || "1";
+
+  const visionProviderName =
+  process.env.VISION_PROVIDER || "gemini";
 
 const visionModel =
   process.env.VISION_MODEL || "gemini-3.6-flash";
@@ -39,10 +43,17 @@ const embeddingProvider =
   );
 
 const visionProvider =
-  new GeminiVisionProvider({
-    apiKey: process.env.GEMINI_API_KEY,
-    model: visionModel
-  });
+  visionProviderName === "groq"
+    ? new GroqVisionProvider({
+        apiKey: process.env.GROQ_API_KEY,
+        model:
+          process.env.GROQ_VISION_MODEL ||
+          "qwen/qwen3.6-27b"
+      })
+    : new GeminiVisionProvider({
+        apiKey: process.env.GEMINI_API_KEY,
+        model: visionModel
+      });
 
 const imageLoader = async (image) => {
   const imagePath = path.resolve(image.filename);
