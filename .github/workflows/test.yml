@@ -23,5 +23,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Create test environment
+        run: |
+          printf 'NODE_ENV=test\n' > .env
+
       - name: Run tests
         run: npm test
