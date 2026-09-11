@@ -1,4 +1,4 @@
-name: Test
+﻿name: Test
 
 on:
   push:
@@ -9,6 +9,21 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: image_relevance
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
 
     steps:
       - name: Checkout
@@ -23,9 +38,15 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Initialize database schema
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d image_relevance < migrations/001_initial_schema.sql
+
       - name: Create test environment
         run: |
-          printf 'NODE_ENV=test\n' > .env
+          printf 'NODE_ENV=test\nDATABASE_URL=postgresql://postgres:postgres@localhost:5432/image_relevance\n' > .env
 
       - name: Run tests
         run: npm test
