@@ -1,11 +1,11 @@
-import { EmbeddingProvider } from "./embedding-provider.js";
+﻿import { EmbeddingProvider } from "./embedding-provider.js";
 
 export class GeminiEmbeddingProvider extends EmbeddingProvider {
-  constructor(
+  constructor({
     apiKey = process.env.GEMINI_API_KEY,
     model = process.env.EMBEDDING_MODEL || "gemini-embedding-001",
     fetchImpl = fetch
-  ) {
+  } = {}) {
     super();
 
     if (!apiKey) {
@@ -19,61 +19,57 @@ export class GeminiEmbeddingProvider extends EmbeddingProvider {
 
   async embedText(text) {
     if (typeof text !== "string") {
-      throw new TypeError(
-        "GeminiEmbeddingProvider requires a string."
-      );
+      throw new TypeError("text must be a string.");
     }
 
-    if (text.trim().length === 0) {
-      throw new Error(
-        "GeminiEmbeddingProvider requires non-empty text."
-      );
+    if (!text.trim()) {
+      throw new Error("text must not be empty.");
     }
 
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/` +
-      `${this.model}:embedContent`;
-
-    const response = await this.fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": this.apiKey
-      },
-      body: JSON.stringify({
-        content: {
-          parts: [
-            {
-              text
-            }
-          ]
-        }
-      })
-    });
+    const response = await this.fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:embedContent?key=${this.apiKey}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          content: {
+            parts: [
+              {
+                text
+              }
+            ]
+          }
+        })
+      }
+    );
 
     const responseBody = await response.json();
 
     if (!response.ok) {
-      const message =
+      const details =
         responseBody?.error?.message ||
-        `Gemini API request failed with HTTP ${response.status}.`;
+        responseBody?.error ||
+        `HTTP ${response.status}`;
 
-      throw new Error(`Gemini API error: ${message}`);
+      throw new Error(`Gemini API error: ${details}`);
     }
 
     const values = responseBody?.embedding?.values;
 
-    if (
-      !Array.isArray(values) ||
-      values.length === 0 ||
-      !values.every((value) => Number.isFinite(value))
-    ) {
-      throw new Error(
-        "Gemini API returned an invalid embedding."
-      );
+    if (!Array.isArray(values) || values.length === 0) {
+      throw new Error("Gemini API returned an invalid embedding.");
     }
 
-    return values;
+    return {
+      data: values,
+      usage: {
+        inputTokens:
+          responseBody?.usageMetadata?.promptTokenCount ?? null,
+        outputTokens: null
+      }
+    };
   }
 }
 

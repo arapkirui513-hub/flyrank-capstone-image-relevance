@@ -1,4 +1,4 @@
-﻿import { readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import * as imageRepository from "./repositories/image-repository.js";
@@ -21,26 +21,66 @@ import GeminiEmbeddingProvider from "./services/providers/gemini-embedding-provi
 import { GeminiVisionProvider } from "./services/providers/gemini-vision-provider.js";
 import { GroqVisionProvider } from "./services/providers/groq-vision-provider.js";
 
+function getOptionalNumber(value) {
+  if (value === undefined || value === null || value.trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 const embeddingModel =
   process.env.EMBEDDING_MODEL || "gemini-embedding-001";
 
 const embeddingModelVersion =
   process.env.EMBEDDING_MODEL_VERSION || "1";
 
-  const visionProviderName =
+const visionProviderName =
   process.env.VISION_PROVIDER || "gemini";
 
 const visionModel =
-  process.env.VISION_MODEL || "gemini-3.6-flash";
+  visionProviderName === "groq"
+    ? process.env.GROQ_VISION_MODEL || "qwen/qwen3.6-27b"
+    : process.env.VISION_MODEL || "gemini-3.6-flash";
+
+const visionInputCostPerMillion =
+  visionProviderName === "groq"
+    ? getOptionalNumber(
+        process.env.GROQ_VISION_INPUT_COST_PER_MILLION
+      )
+    : getOptionalNumber(
+        process.env.GEMINI_VISION_INPUT_COST_PER_MILLION
+      );
+
+const visionOutputCostPerMillion =
+  visionProviderName === "groq"
+    ? getOptionalNumber(
+        process.env.GROQ_VISION_OUTPUT_COST_PER_MILLION
+      )
+    : getOptionalNumber(
+        process.env.GEMINI_VISION_OUTPUT_COST_PER_MILLION
+      );
+
+const embeddingInputCostPerMillion =
+  getOptionalNumber(
+    process.env.GEMINI_EMBEDDING_INPUT_COST_PER_MILLION
+  );
+
+const embeddingOutputCostPerMillion =
+  getOptionalNumber(
+    process.env.GEMINI_EMBEDDING_OUTPUT_COST_PER_MILLION
+  );
 
 const guardVersion =
   process.env.GUARD_VERSION || "1";
 
 const embeddingProvider =
-  new GeminiEmbeddingProvider(
-    process.env.GEMINI_API_KEY,
-    embeddingModel
-  );
+  new GeminiEmbeddingProvider({
+    apiKey: process.env.GEMINI_API_KEY,
+    model: embeddingModel
+  });
 
 const visionProvider =
   visionProviderName === "groq"
@@ -65,9 +105,13 @@ const postEmbeddingService =
   new PostEmbeddingService({
     postRepository,
     postEmbeddingRepository,
+    aiCostLogRepository,
     embeddingProvider,
     embeddingModel,
-    embeddingModelVersion
+    embeddingModelVersion,
+    embeddingProviderName: "gemini",
+    embeddingInputCostPerMillion,
+    embeddingOutputCostPerMillion
   });
 
 const imageProcessingService =
@@ -81,7 +125,13 @@ const imageProcessingService =
     imageLoader,
     embeddingModel,
     embeddingModelVersion,
-    visionModel
+    visionModel,
+    visionProviderName,
+    embeddingProviderName: "gemini",
+    visionInputCostPerMillion,
+    visionOutputCostPerMillion,
+    embeddingInputCostPerMillion,
+    embeddingOutputCostPerMillion
   });
 
 const imageProcessingJobService =

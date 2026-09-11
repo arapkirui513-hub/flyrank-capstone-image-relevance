@@ -35,7 +35,11 @@ test("Gemini vision provider implements analyzeImage contract", async () => {
               ]
             }
           }
-        ]
+        ],
+        usageMetadata: {
+          promptTokenCount: 120,
+          candidatesTokenCount: 80
+        }
       }),
       {
         status: 200,
@@ -57,16 +61,22 @@ test("Gemini vision provider implements analyzeImage contract", async () => {
   );
 
   assert.deepEqual(result, {
-    subject: "patient monitor",
-    category: "medical_equipment",
-    attributes: [
-      "bedside",
-      "vital signs",
-      "display"
-    ],
-    caption:
-      "A patient monitor displaying vital signs.",
-    confidence: 0.92
+    data: {
+      subject: "patient monitor",
+      category: "medical_equipment",
+      attributes: [
+        "bedside",
+        "vital signs",
+        "display"
+      ],
+      caption:
+        "A patient monitor displaying vital signs.",
+      confidence: 0.92
+    },
+    usage: {
+      inputTokens: 120,
+      outputTokens: 80
+    }
   });
 
   assert.equal(
@@ -95,6 +105,52 @@ test("Gemini vision provider implements analyzeImage contract", async () => {
     body.contents[0].parts[1].inlineData.data,
     Buffer.from("fake-image").toString("base64")
   );
+});
+
+test("Gemini vision provider preserves missing usage metadata as null", async () => {
+  const fakeFetch = async () =>
+    new Response(
+      JSON.stringify({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    subject: "patient monitor",
+                    category: "medical_equipment",
+                    attributes: ["display"],
+                    caption:
+                      "A patient monitor displaying vital signs.",
+                    confidence: 0.92
+                  })
+                }
+              ]
+            }
+          }
+        ]
+      }),
+      {
+        status: 200,
+        headers: {
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+  const provider = new GeminiVisionProvider({
+    apiKey: "test-key",
+    fetchImpl: fakeFetch
+  });
+
+  const result = await provider.analyzeImage(
+    Buffer.from("fake-image")
+  );
+
+  assert.deepEqual(result.usage, {
+    inputTokens: null,
+    outputTokens: null
+  });
 });
 
 test("Gemini vision provider rejects API errors", async () => {

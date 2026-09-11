@@ -1,26 +1,15 @@
-import { VisionProvider } from "./vision-provider.js";
+﻿import { VisionProvider } from "./vision-provider.js";
 
 const DEFAULT_PROMPT = `
-Analyze this medical equipment image.
+Analyze this image and return JSON with exactly these fields:
+- subject: the primary object or equipment shown
+- category: the broad category
+- attributes: an array of useful visual attributes
+- caption: a concise description of the image
+- confidence: a number from 0 to 1 representing confidence in the identification
 
-Return ONLY valid JSON with exactly these fields:
-{
-  "subject": "string",
-  "category": "string",
-  "attributes": ["string"],
-  "caption": "string",
-  "confidence": 0.0
-}
-
-Rules:
-- subject: identify the specific medical equipment shown.
-- category: identify the broad category, such as "medical_equipment".
-- attributes: list observable physical or functional characteristics.
-- caption: write a concise description of the image.
-- confidence: number from 0 to 1 representing confidence in the identification.
-- Do not include markdown.
-- Do not include explanations outside the JSON object.
-`.trim();
+Do not include markdown fences or additional commentary.
+`;
 
 export class GeminiVisionProvider extends VisionProvider {
   constructor({
@@ -41,99 +30,77 @@ export class GeminiVisionProvider extends VisionProvider {
 
   async analyzeImage(imageBuffer, mimeType = "image/jpeg") {
     if (!Buffer.isBuffer(imageBuffer)) {
-      throw new TypeError("GeminiVisionProvider requires a Buffer.");
+      throw new TypeError("imageBuffer must be a Buffer.");
     }
 
     if (imageBuffer.length === 0) {
-      throw new Error("Cannot analyze an empty image buffer.");
+      throw new Error("imageBuffer must not be empty.");
     }
 
-    const url =
-      `https://generativelanguage.googleapis.com/v1beta/models/` +
-      `${this.model}:generateContent`;
+    const base64Image = imageBuffer.toString("base64");
 
-    const response = await this.fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": this.apiKey
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: DEFAULT_PROMPT
-              },
-              {
-                inlineData: {
-                  mimeType,
-                  data: imageBuffer.toString("base64")
+    const response = await this.fetchImpl(
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": this.apiKey
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: DEFAULT_PROMPT
+                },
+                {
+                  inlineData: {
+                    mimeType: mimeType,
+                    data: base64Image
+                  }
                 }
-              }
-            ]
+              ]
+            }
+          ],
+          generationConfig: {
+            responseMimeType: "application/json"
           }
-        ],
-        generationConfig: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              subject: {
-                type: "STRING"
-              },
-              category: {
-                type: "STRING"
-              },
-              attributes: {
-                type: "ARRAY",
-                items: {
-                  type: "STRING"
-                }
-              },
-              caption: {
-                type: "STRING"
-              },
-              confidence: {
-                type: "NUMBER"
-              }
-            },
-            required: [
-              "subject",
-              "category",
-              "attributes",
-              "caption",
-              "confidence"
-            ]
-          }
-        }
-      })
-    });
+        })
+      }
+    );
 
     const responseBody = await response.json();
 
     if (!response.ok) {
-      const message =
+      const details =
         responseBody?.error?.message ||
-        `Gemini API request failed with HTTP ${response.status}.`;
+        responseBody?.error ||
+        `HTTP ${response.status}`;
 
-      throw new Error(`Gemini API error: ${message}`);
+      throw new Error(`Gemini API error: ${details}`);
     }
 
-    const text =
-      responseBody?.candidates?.[0]?.content?.parts?.find(
-        (part) => typeof part.text === "string"
-      )?.text;
+    const text = responseBody?.candidates?.[0]?.content?.parts?.[0]?.text;
 
     if (!text) {
-      throw new Error("Gemini API returned no text content.");
+      throw new Error("Gemini API returned no response content.");
     }
 
     try {
-      return JSON.parse(text);
+      return {
+        data: JSON.parse(text),
+        usage: {
+          inputTokens:
+            responseBody?.usageMetadata?.promptTokenCount ?? null,
+          outputTokens:
+            responseBody?.usageMetadata?.candidatesTokenCount ?? null
+        }
+      };
     } catch {
       throw new Error("Gemini API returned invalid JSON metadata.");
     }
   }
 }
+
+export default GeminiVisionProvider;

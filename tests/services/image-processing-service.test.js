@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ImageProcessingService } from "../../app/services/image-processing-service.js";
@@ -63,11 +63,22 @@ function createDependencies(overrides = {}) {
         assert.ok(Buffer.isBuffer(imageBuffer));
 
         return {
-          subject: "patient monitor",
-          category: "medical_equipment",
-          attributes: ["bedside", "vital signs", "display"],
-          caption: "A patient monitor displaying vital signs.",
-          confidence: 0.92
+          data: {
+            subject: "patient monitor",
+            category: "medical_equipment",
+            attributes: [
+              "bedside",
+              "vital signs",
+              "display"
+            ],
+            caption:
+              "A patient monitor displaying vital signs.",
+            confidence: 0.92
+          },
+          usage: {
+            inputTokens: 120,
+            outputTokens: 80
+          }
         };
       }
     },
@@ -79,13 +90,26 @@ function createDependencies(overrides = {}) {
           "A patient monitor displaying vital signs."
         );
 
-        return [0.12, 0.34, 0.56, 0.78];
+        return {
+          data: [0.12, 0.34, 0.56, 0.78],
+          usage: {
+            inputTokens: 25,
+            outputTokens: null
+          }
+        };
       }
     },
 
     imageLoader: async (image) => {
-      assert.equal(image.filename, "pm-001_patient-monitor.jpg");
-      assert.equal(image.category, "patient_monitor");
+      assert.equal(
+        image.filename,
+        "pm-001_patient-monitor.jpg"
+      );
+
+      assert.equal(
+        image.category,
+        "patient_monitor"
+      );
 
       return Buffer.from("fake-image");
     },
@@ -93,8 +117,11 @@ function createDependencies(overrides = {}) {
     embeddingModel: "mock-embedding",
     embeddingModelVersion: "v1",
     visionModel: "mock-vision",
+    visionProviderName: "mock-vision-provider",
+    embeddingProviderName: "mock-embedding-provider",
 
-    now: () => new Date("2026-09-04T09:00:00.000Z"),
+    now: () =>
+      new Date("2026-09-04T09:00:00.000Z"),
 
     ...overrides
   };
@@ -106,11 +133,14 @@ function createDependencies(overrides = {}) {
 }
 
 test("image processing analyzes, embeds, persists, and completes an image", async () => {
-  const { dependencies, calls } = createDependencies();
+  const { dependencies, calls } =
+    createDependencies();
 
-  const service = new ImageProcessingService(dependencies);
+  const service =
+    new ImageProcessingService(dependencies);
 
-  const result = await service.processImage("image-1");
+  const result =
+    await service.processImage("image-1");
 
   assert.deepEqual(
     calls.statuses.map((call) => call.status),
@@ -121,8 +151,13 @@ test("image processing analyzes, embeds, persists, and completes an image", asyn
     imageId: "image-1",
     subject: "patient monitor",
     category: "medical_equipment",
-    attributes: ["bedside", "vital signs", "display"],
-    caption: "A patient monitor displaying vital signs.",
+    attributes: [
+      "bedside",
+      "vital signs",
+      "display"
+    ],
+    caption:
+      "A patient monitor displaying vital signs.",
     confidence: 0.92
   });
 
@@ -134,49 +169,93 @@ test("image processing analyzes, embeds, persists, and completes an image", asyn
   });
 
   assert.equal(result.lowConfidence, false);
-  assert.equal(calls.costs.length, 1);
-  assert.equal(calls.costs[0].operation, "image_processing");
-  assert.equal(calls.costs[0].success, true);
+
+  assert.equal(calls.costs.length, 2);
+
+  assert.deepEqual(calls.costs[0], {
+    jobId: null,
+    operation: "vision_analysis",
+    provider: "mock-vision-provider",
+    model: "mock-vision",
+    inputTokens: 120,
+    outputTokens: 80,
+    durationMs: 0,
+    estimatedCostUsd: null,
+    success: true,
+    errorMessage: null
+  });
+
+  assert.deepEqual(calls.costs[1], {
+    jobId: null,
+    operation: "embedding_generation",
+    provider: "mock-embedding-provider",
+    model: "mock-embedding",
+    inputTokens: 25,
+    outputTokens: null,
+    durationMs: 0,
+    estimatedCostUsd: null,
+    success: true,
+    errorMessage: null
+  });
 });
 
 test("image processing flags metadata below the confidence threshold", async () => {
-  const { dependencies } = createDependencies({
-    visionProvider: {
-      async analyzeImage() {
-        return {
-          subject: "patient monitor",
-          category: "medical_equipment",
-          attributes: ["display"],
-          caption: "A patient monitor displaying vital signs.",
-          confidence: 0.69
-        };
+  const { dependencies } =
+    createDependencies({
+      visionProvider: {
+        async analyzeImage() {
+          return {
+            data: {
+              subject: "patient monitor",
+              category: "medical_equipment",
+              attributes: ["display"],
+              caption:
+                "A patient monitor displaying vital signs.",
+              confidence: 0.69
+            },
+            usage: {
+              inputTokens: 120,
+              outputTokens: 80
+            }
+          };
+        }
       }
-    }
-  });
+    });
 
-  const service = new ImageProcessingService(dependencies);
+  const service =
+    new ImageProcessingService(dependencies);
 
-  const result = await service.processImage("image-1");
+  const result =
+    await service.processImage("image-1");
 
   assert.equal(result.lowConfidence, true);
 });
 
 test("image processing rejects invalid vision metadata", async () => {
-  const { dependencies, calls } = createDependencies({
-    visionProvider: {
-      async analyzeImage() {
-        return {
-          subject: "patient monitor",
-          category: "medical_equipment",
-          attributes: "not-an-array",
-          caption: "A patient monitor displaying vital signs.",
-          confidence: 0.92
-        };
+  const { dependencies, calls } =
+    createDependencies({
+      visionProvider: {
+        async analyzeImage() {
+          return {
+            data: {
+              subject: "patient monitor",
+              category: "medical_equipment",
+              attributes: "not-an-array",
+              caption:
+                "A patient monitor displaying vital signs.",
+              confidence: 0.92
+            },
+            usage: {
+              inputTokens: 120,
+              outputTokens: 80
+            }
+          };
+        }
       }
-    }
-  });
+    });
 
-  const service = new ImageProcessingService(dependencies);
+  const service =
+    new ImageProcessingService(dependencies);
 
   await assert.rejects(
     () => service.processImage("image-1"),
@@ -189,19 +268,27 @@ test("image processing rejects invalid vision metadata", async () => {
   );
 
   assert.equal(calls.costs.length, 1);
-  assert.equal(calls.costs[0].success, false);
+  assert.equal(
+    calls.costs[0].operation,
+    "vision_analysis"
+  );
+  assert.equal(calls.costs[0].success, true);
 });
 
-test("image processing fails the image when embedding fails", async () => {
-  const { dependencies, calls } = createDependencies({
-    embeddingProvider: {
-      async embedText() {
-        throw new Error("embedding provider unavailable");
+test("image processing records a failed embedding AI call", async () => {
+  const { dependencies, calls } =
+    createDependencies({
+      embeddingProvider: {
+        async embedText() {
+          throw new Error(
+            "embedding provider unavailable"
+          );
+        }
       }
-    }
-  });
+    });
 
-  const service = new ImageProcessingService(dependencies);
+  const service =
+    new ImageProcessingService(dependencies);
 
   await assert.rejects(
     () => service.processImage("image-1"),
@@ -213,27 +300,93 @@ test("image processing fails the image when embedding fails", async () => {
     ["processing", "failed"]
   );
 
-  assert.equal(calls.costs[0].success, false);
+  assert.equal(calls.costs.length, 2);
+
   assert.equal(
-    calls.costs[0].errorMessage,
+    calls.costs[0].operation,
+    "vision_analysis"
+  );
+  assert.equal(
+    calls.costs[0].success,
+    true
+  );
+
+  assert.equal(
+    calls.costs[1].operation,
+    "embedding_generation"
+  );
+  assert.equal(
+    calls.costs[1].success,
+    false
+  );
+  assert.equal(
+    calls.costs[1].errorMessage,
     "embedding provider unavailable"
   );
 });
 
-test("image processing rejects a missing image", async () => {
-  const { dependencies, calls } = createDependencies({
-    imageRepository: {
-      async findImageById() {
-        return null;
-      },
-
-      async updateImageStatus() {
-        throw new Error("should not be called");
+test("image processing records a failed vision AI call", async () => {
+  const { dependencies, calls } =
+    createDependencies({
+      visionProvider: {
+        async analyzeImage() {
+          throw new Error(
+            "vision provider unavailable"
+          );
+        }
       }
-    }
-  });
+    });
 
-  const service = new ImageProcessingService(dependencies);
+  const service =
+    new ImageProcessingService(dependencies);
+
+  await assert.rejects(
+    () => service.processImage("image-1"),
+    /vision provider unavailable/
+  );
+
+  assert.deepEqual(
+    calls.statuses.map((call) => call.status),
+    ["processing", "failed"]
+  );
+
+  assert.equal(calls.costs.length, 1);
+  assert.equal(
+    calls.costs[0].operation,
+    "vision_analysis"
+  );
+  assert.equal(
+    calls.costs[0].provider,
+    "mock-vision-provider"
+  );
+  assert.equal(
+    calls.costs[0].success,
+    false
+  );
+  assert.equal(
+    calls.costs[0].errorMessage,
+    "vision provider unavailable"
+  );
+});
+
+test("image processing rejects a missing image", async () => {
+  const { dependencies, calls } =
+    createDependencies({
+      imageRepository: {
+        async findImageById() {
+          return null;
+        },
+
+        async updateImageStatus() {
+          throw new Error(
+            "should not be called"
+          );
+        }
+      }
+    });
+
+  const service =
+    new ImageProcessingService(dependencies);
 
   await assert.rejects(
     () => service.processImage("missing-image"),
@@ -244,17 +397,26 @@ test("image processing rejects a missing image", async () => {
   assert.equal(calls.costs.length, 0);
 });
 
-test("image processing associates AI cost log with a job", async () => {
-  const { dependencies, calls } = createDependencies();
+test("image processing associates AI cost logs with a job", async () => {
+  const { dependencies, calls } =
+    createDependencies();
 
-  const service = new ImageProcessingService(dependencies);
+  const service =
+    new ImageProcessingService(dependencies);
 
   await service.processImage("image-1", {
     jobId: "job-123"
   });
 
-  assert.equal(calls.costs.length, 1);
-  assert.equal(calls.costs[0].jobId, "job-123");
-  assert.equal(calls.costs[0].operation, "image_processing");
-  assert.equal(calls.costs[0].success, true);
+  assert.equal(calls.costs.length, 2);
+
+  assert.equal(
+    calls.costs[0].jobId,
+    "job-123"
+  );
+
+  assert.equal(
+    calls.costs[1].jobId,
+    "job-123"
+  );
 });

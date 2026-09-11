@@ -1,26 +1,30 @@
 ﻿import { VisionProvider } from "./vision-provider.js";
 
 const DEFAULT_PROMPT = `
-Analyze this medical equipment image.
+Analyze this image and identify the primary object or equipment shown.
 
-Return a JSON object containing exactly these fields:
+Return ONLY one valid JSON object.
+Do not return markdown.
+Do not return explanations.
+Do not return text before or after the JSON object.
+
+The JSON object MUST contain exactly these fields:
 {
-  "subject": "string",
-  "category": "string",
-  "attributes": ["string"],
-  "caption": "string",
+  "subject": "primary object or equipment",
+  "category": "broad category",
+  "attributes": ["short visual attribute"],
+  "caption": "one concise sentence describing the image",
   "confidence": 0.0
 }
 
 Rules:
-- subject: identify the specific medical equipment shown.
-- category: identify the broad category, such as "medical_equipment".
-- attributes: list observable physical or functional characteristics.
-- caption: write a concise description of the image.
-- confidence: number from 0 to 1 representing confidence in the identification.
-- Do not include markdown.
-- Do not include explanations outside the JSON object.
-`.trim();
+- subject must be a short noun phrase.
+- category must be a broad equipment category.
+- attributes must be an array of no more than 5 short strings.
+- caption must be one concise sentence.
+- confidence must be a number between 0 and 1.
+- Do not include any additional fields.
+`;
 
 export class GroqVisionProvider extends VisionProvider {
   constructor({
@@ -41,73 +45,84 @@ export class GroqVisionProvider extends VisionProvider {
 
   async analyzeImage(imageBuffer, mimeType = "image/jpeg") {
     if (!Buffer.isBuffer(imageBuffer)) {
-      throw new TypeError("GroqVisionProvider requires a Buffer.");
+      throw new TypeError("imageBuffer must be a Buffer.");
     }
 
     if (imageBuffer.length === 0) {
-      throw new Error("Cannot analyze an empty image buffer.");
+      throw new Error("imageBuffer must not be empty.");
     }
 
-    const url = "https://api.groq.com/openai/v1/chat/completions";
+    const base64Image = imageBuffer.toString("base64");
 
-    const response = await this.fetchImpl(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`
-      },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "text",
-                text: DEFAULT_PROMPT
-              },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${imageBuffer.toString("base64")}`
+    const response = await this.fetchImpl(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: this.model,
+          temperature: 0,
+          reasoning_effort: "none",
+          max_tokens: 256,
+
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "text",
+                  text: DEFAULT_PROMPT
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: `data:${mimeType};base64,${base64Image}`
+                  }
                 }
-              }
-            ]
-          }
-        ],
-        response_format: {
-          type: "json_object"
-      },
-        max_completion_tokens: 512,
-        reasoning_effort: "none"
-      })
-    });
+              ]
+            }
+          ]
+        })
+      }
+    );
 
     const responseBody = await response.json();
 
     if (!response.ok) {
-  const message =
+  const details =
     responseBody?.error?.message ||
-    `Groq API request failed with HTTP ${response.status}.`;
+    responseBody?.error ||
+    `HTTP ${response.status}`;
 
   const failedGeneration =
-    responseBody?.error?.failed_generation;
+    typeof responseBody?.error?.failed_generation === "string"
+      ? responseBody.error.failed_generation.slice(0, 1000)
+      : null;
 
-  const details = failedGeneration
-    ? `${message} Failed generation: ${failedGeneration}`
-    : message;
+  const diagnostic = failedGeneration
+    ? ` failed_generation=${failedGeneration}`
+    : "";
 
-  throw new Error(`Groq API error: ${details}`);
+  throw new Error(`Groq API error: ${details}${diagnostic}`);
 }
-    const text =
-      responseBody?.choices?.[0]?.message?.content;
+
+    const text = responseBody?.choices?.[0]?.message?.content;
 
     if (!text) {
-      throw new Error("Groq API returned no text content.");
+      throw new Error("Groq API returned no response content.");
     }
 
     try {
-      return JSON.parse(text);
+      return {
+        data: JSON.parse(text),
+        usage: {
+          inputTokens: responseBody?.usage?.prompt_tokens ?? null,
+          outputTokens: responseBody?.usage?.completion_tokens ?? null
+        }
+      };
     } catch {
       throw new Error("Groq API returned invalid JSON metadata.");
     }
@@ -115,3 +130,4 @@ export class GroqVisionProvider extends VisionProvider {
 }
 
 export default GroqVisionProvider;
+

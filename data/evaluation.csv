@@ -1,0 +1,13 @@
+﻿id,expected_subject,title,content
+eval-defibrillator-01,defibrillator,Emergency defibrillator equipment,"The hospital has acquired a portable defibrillator for emergency cardiac response."
+eval-defibrillator-02,defibrillator,Cardiac resuscitation equipment,"The emergency department needs a defibrillator available for immediate cardiac resuscitation."
+eval-defibrillator-03,defibrillator,Defibrillator inventory,"The biomedical engineering team is reviewing the hospital's defibrillator equipment inventory."
+eval-hospital-bed-01,hospital_bed,Hospital bed equipment,"The ward needs a hospital bed for inpatient care and patient positioning."
+eval-hospital-bed-02,hospital_bed,Electric hospital bed,"The hospital is reviewing electric hospital beds used in inpatient wards."
+eval-hospital-bed-03,hospital_bed,Inpatient bed replacement,"The biomedical team is assessing hospital beds for replacement and maintenance planning."
+eval-patient-monitor-01,patient_monitor,Bedside patient monitoring,"The ICU requires a bedside patient monitor for continuous vital-sign monitoring."
+eval-patient-monitor-02,patient_monitor,Patient monitor equipment,"The ward needs a patient monitor to display and track vital signs."
+eval-patient-monitor-03,patient_monitor,ICU monitoring equipment,"The hospital is reviewing patient monitors used for bedside monitoring in the ICU."
+eval-sterilizer-01,sterilizer,Sterilization equipment,"The central sterile services department needs a sterilizer for medical instrument sterilization."
+eval-sterilizer-02,sterilizer,Medical sterilizer inventory,"The hospital is reviewing sterilizers used to process reusable medical instruments."
+eval-sterilizer-03,sterilizer,Autoclave equipment,"The biomedical engineering team is assessing autoclave equipment used for sterilization."

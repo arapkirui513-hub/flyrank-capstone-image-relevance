@@ -1,3 +1,4 @@
+﻿import "dotenv/config";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -8,9 +9,21 @@ import { createImageEmbedding } from "../app/repositories/image-embedding-reposi
 import { createAiCostLog } from "../app/repositories/ai-cost-log-repository.js";
 import { ImageProcessingService } from "../app/services/image-processing-service.js";
 import { GeminiVisionProvider } from "../app/services/providers/gemini-vision-provider.js";
+import { GroqVisionProvider } from "../app/services/providers/groq-vision-provider.js";
 import GeminiEmbeddingProvider from "../app/services/providers/gemini-embedding-provider.js";
 
-const imageRoot = path.resolve("data/images");
+function getOptionalNumber(value) {
+  if (value === undefined || value === null || String(value).trim() === "") {
+    return null;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+const imageRoot = path.resolve(
+  process.env.IMAGE_ROOT || "data/images"
+);
 
 const imageExtensions = new Set([
   ".jpg",
@@ -44,8 +57,50 @@ async function discoverImages(directory) {
 
 const imagePaths = await discoverImages(imageRoot);
 
+const categoryFilter =
+  (process.env.IMAGE_CATEGORY || "").trim().toLowerCase();
+
+const selectedImagePaths = categoryFilter
+  ? imagePaths.filter(
+      (imagePath) =>
+        path.basename(path.dirname(imagePath)).toLowerCase() ===
+        categoryFilter
+    )
+  : imagePaths;
+
+const imageLimit = Number.parseInt(process.env.IMAGE_LIMIT || "", 10);
+
+const limitedImagePaths =
+  Number.isFinite(imageLimit) && imageLimit > 0
+    ? selectedImagePaths.slice(0, imageLimit)
+    : selectedImagePaths;
+
+const visionProviderName =
+  (process.env.VISION_PROVIDER || "gemini").toLowerCase();
+
+const visionProvider =
+  visionProviderName === "groq"
+    ? new GroqVisionProvider()
+    : new GeminiVisionProvider();
+
+const visionModel =
+  visionProviderName === "groq"
+    ? process.env.GROQ_VISION_MODEL || "qwen/qwen3.6-27b"
+    : process.env.VISION_MODEL || "gemini-3.6-flash";
+
 console.log("\nIMAGE CORPUS PROCESSING");
 console.log(`Discovered: ${imagePaths.length}`);
+console.log(
+  `Category filter: ${categoryFilter || "none"}`
+);
+console.log(`Selected: ${limitedImagePaths.length}`);
+console.log(`Vision provider: ${visionProviderName}`);
+console.log(`Vision model: ${visionModel}`);
+console.log(
+  `Embedding model: ${
+    process.env.EMBEDDING_MODEL || "gemini-embedding-001"
+  }`
+);
 
 const service = new ImageProcessingService({
   imageRepository: {
@@ -103,7 +158,7 @@ const service = new ImageProcessingService({
     createAiCostLog
   },
 
-  visionProvider: new GeminiVisionProvider(),
+  visionProvider,
   embeddingProvider: new GeminiEmbeddingProvider(),
 
   imageLoader: async (image) => {
@@ -116,25 +171,102 @@ const service = new ImageProcessingService({
   embeddingModelVersion:
     process.env.EMBEDDING_MODEL_VERSION || "live",
 
-  visionModel:
-    process.env.VISION_MODEL || "gemini-3.6-flash"
+  visionProviderName,
+  embeddingProviderName: "gemini",
+  visionInputCostPerMillion: getOptionalNumber(
+    visionProviderName === "groq"
+      ? process.env.GROQ_VISION_INPUT_COST_PER_MILLION
+      : process.env.GEMINI_VISION_INPUT_COST_PER_MILLION
+  ),
+
+  visionOutputCostPerMillion: getOptionalNumber(
+    visionProviderName === "groq"
+      ? process.env.GROQ_VISION_OUTPUT_COST_PER_MILLION
+      : process.env.GEMINI_VISION_OUTPUT_COST_PER_MILLION
+  ),
+
+  embeddingInputCostPerMillion: getOptionalNumber(
+    process.env.GEMINI_EMBEDDING_INPUT_COST_PER_MILLION
+  ),
+
+  embeddingOutputCostPerMillion: getOptionalNumber(
+    process.env.GEMINI_EMBEDDING_OUTPUT_COST_PER_MILLION
+  ),
+
+  visionModel
 });
 
 const results = [];
+
 function isQuotaOrRateLimitError(error) {
-  const message =
-    error instanceof Error ? error.message : String(error);
+  const message = (
+    error instanceof Error ? error.message : String(error)
+  ).toLowerCase();
 
   return (
     message.includes("quota") ||
     message.includes("rate limit") ||
     message.includes("rate-limit") ||
     message.includes("429") ||
-    message.includes("RESOURCE_EXHAUSTED")
+    message.includes("resource_exhausted")
   );
 }
 
-for (const absolutePath of imagePaths) {
+function getRetryDelayMs(error) {
+  const message =
+    error instanceof Error ? error.message : String(error);
+
+  const secondsMatch = message.match(
+    /try again in ([\d.]+)s/i
+  );
+
+  if (secondsMatch) {
+    return Math.ceil(Number(secondsMatch[1]) * 1000) + 500;
+  }
+
+  const millisecondsMatch = message.match(
+    /try again in ([\d.]+)ms/i
+  );
+
+  if (millisecondsMatch) {
+    return Math.ceil(Number(millisecondsMatch[1])) + 500;
+  }
+
+  return 15000;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+const MAX_RATE_LIMIT_RETRIES = 3;
+
+async function processImageWithRateLimitRetry(imageId) {
+  for (let attempt = 1; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+    try {
+      return await service.processImage(imageId);
+    } catch (error) {
+      if (
+        !isQuotaOrRateLimitError(error) ||
+        attempt === MAX_RATE_LIMIT_RETRIES
+      ) {
+        throw error;
+      }
+
+      const delayMs = getRetryDelayMs(error);
+
+      console.error(
+        `RATE LIMIT | attempt ${attempt}/${MAX_RATE_LIMIT_RETRIES} | waiting ${delayMs}ms`
+      );
+
+      await sleep(delayMs);
+    }
+  }
+
+  throw new Error("Image processing retry loop exited unexpectedly.");
+}
+
+for (const absolutePath of limitedImagePaths) {
   const relativePath = path.relative(process.cwd(), absolutePath);
   const normalizedPath = relativePath.split(path.sep).join("/");
   const category = path.basename(path.dirname(absolutePath));
@@ -169,7 +301,7 @@ for (const absolutePath of imagePaths) {
       console.log(`Reusing existing image | status=${image.status}`);
     }
 
-    const result = await service.processImage(image.id);
+    const result = await processImageWithRateLimitRetry(image.id);
 
     results.push({
       category,
@@ -197,10 +329,14 @@ for (const absolutePath of imagePaths) {
     });
 
     if (isQuotaOrRateLimitError(error)) {
-      console.error(`STOP | Gemini quota/rate limit detected.`);
-      console.error(`Remaining images will not be processed in this run.`);
-      break;
-    }
+  const retryDelayMs = getRetryDelayMs(error);
+
+  console.error(
+    `RATE LIMIT | waiting ${retryDelayMs}ms before continuing.`
+  );
+
+  await sleep(retryDelayMs);
+}
   }
 }
 
@@ -254,3 +390,7 @@ await pool.end();
 if (failed.length > 0) {
   process.exitCode = 1;
 }
+
+
+
+

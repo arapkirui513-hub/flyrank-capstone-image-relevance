@@ -20,6 +20,37 @@ function getImageMimeType(filename) {
   return mimeType;
 }
 
+function calculateEstimatedCostUsd({
+  inputTokens,
+  outputTokens,
+  inputCostPerMillion,
+  outputCostPerMillion
+}) {
+  if (
+    inputTokens === null &&
+    outputTokens === null
+  ) {
+    return null;
+  }
+
+  if (
+    typeof inputCostPerMillion !== "number" ||
+    typeof outputCostPerMillion !== "number"
+  ) {
+    return null;
+  }
+
+  const inputCost =
+    ((inputTokens ?? 0) / 1_000_000) *
+    inputCostPerMillion;
+
+  const outputCost =
+    ((outputTokens ?? 0) / 1_000_000) *
+    outputCostPerMillion;
+
+  return inputCost + outputCost;
+}
+
 export class ImageProcessingService {
   constructor({
     imageRepository,
@@ -32,6 +63,12 @@ export class ImageProcessingService {
     embeddingModel,
     embeddingModelVersion,
     visionModel = "unknown",
+    visionProviderName = "unknown",
+    embeddingProviderName = "unknown",
+    visionInputCostPerMillion = null,
+    visionOutputCostPerMillion = null,
+    embeddingInputCostPerMillion = null,
+    embeddingOutputCostPerMillion = null,
     now = () => new Date()
   }) {
     this.imageRepository = imageRepository;
@@ -44,6 +81,16 @@ export class ImageProcessingService {
     this.embeddingModel = embeddingModel;
     this.embeddingModelVersion = embeddingModelVersion;
     this.visionModel = visionModel;
+    this.visionProviderName = visionProviderName;
+    this.embeddingProviderName = embeddingProviderName;
+    this.visionInputCostPerMillion =
+      visionInputCostPerMillion;
+    this.visionOutputCostPerMillion =
+      visionOutputCostPerMillion;
+    this.embeddingInputCostPerMillion =
+      embeddingInputCostPerMillion;
+    this.embeddingOutputCostPerMillion =
+      embeddingOutputCostPerMillion;
     this.now = now;
   }
 
@@ -59,21 +106,91 @@ export class ImageProcessingService {
       "processing"
     );
 
-    const startedAt = this.now();
-
     try {
       const imageBuffer = await this.imageLoader(image);
 
-      const rawMetadata =
-        await this.visionProvider.analyzeImage(
-          imageBuffer,
-          getImageMimeType(image.filename)
-        );
+      const visionStartedAt = this.now();
 
-      const metadata = visionMetadataSchema.parse(rawMetadata);
+      let visionResult;
 
-      const embedding =
-        await this.embeddingProvider.embedText(metadata.caption);
+      try {
+        visionResult =
+          await this.visionProvider.analyzeImage(
+            imageBuffer,
+            getImageMimeType(image.filename)
+          );
+      } catch (error) {
+        await this.logAiCall({
+          jobId,
+          operation: "vision_analysis",
+          provider: this.visionProviderName,
+          model: this.visionModel,
+          inputTokens: null,
+          outputTokens: null,
+          startedAt: visionStartedAt,
+          success: false,
+          errorMessage: error.message
+        });
+
+        throw error;
+      }
+
+      await this.logAiCall({
+        jobId,
+        operation: "vision_analysis",
+        provider: this.visionProviderName,
+        model: this.visionModel,
+        inputTokens:
+          visionResult?.usage?.inputTokens ?? null,
+        outputTokens:
+          visionResult?.usage?.outputTokens ?? null,
+        startedAt: visionStartedAt,
+        success: true
+      });
+
+      const metadata = visionMetadataSchema.parse(
+        visionResult?.data
+      );
+
+      const embeddingStartedAt = this.now();
+
+      let embeddingResult;
+
+      try {
+        embeddingResult =
+          await this.embeddingProvider.embedText(
+            metadata.caption
+          );
+      } catch (error) {
+        await this.logAiCall({
+          jobId,
+          operation: "embedding_generation",
+          provider: this.embeddingProviderName,
+          model: this.embeddingModel,
+          inputTokens: null,
+          outputTokens: null,
+          startedAt: embeddingStartedAt,
+          success: false,
+          errorMessage: error.message
+        });
+
+        throw error;
+      }
+
+      await this.logAiCall({
+        jobId,
+        operation: "embedding_generation",
+        provider: this.embeddingProviderName,
+        model: this.embeddingModel,
+        inputTokens:
+          embeddingResult?.usage?.inputTokens ?? null,
+        outputTokens:
+          embeddingResult?.usage?.outputTokens ?? null,
+        startedAt: embeddingStartedAt,
+        success: true
+      });
+
+      const embedding = embeddingResult?.data;
 
       if (!Array.isArray(embedding) || embedding.length === 0) {
         throw new Error(
@@ -105,12 +222,6 @@ export class ImageProcessingService {
           "completed"
         );
 
-      await this.logCost({
-        jobId,
-        startedAt,
-        success: true
-      });
-
       return {
         image: completedImage,
         metadata: savedMetadata,
@@ -124,19 +235,17 @@ export class ImageProcessingService {
         "failed"
       );
 
-      await this.logCost({
-        jobId,
-        startedAt,
-        success: false,
-        errorMessage: error.message
-      });
-
       throw error;
     }
   }
 
-  async logCost({
+  async logAiCall({
     jobId = null,
+    operation,
+    provider,
+    model,
+    inputTokens = null,
+    outputTokens = null,
     startedAt,
     success,
     errorMessage = null
@@ -150,15 +259,39 @@ export class ImageProcessingService {
       this.now().getTime() - startedAt.getTime()
     );
 
+    let estimatedCostUsd = null;
+
+    if (operation === "vision_analysis") {
+      estimatedCostUsd = calculateEstimatedCostUsd({
+        inputTokens,
+        outputTokens,
+        inputCostPerMillion:
+          this.visionInputCostPerMillion,
+        outputCostPerMillion:
+          this.visionOutputCostPerMillion
+      });
+    }
+
+    if (operation === "embedding_generation") {
+      estimatedCostUsd = calculateEstimatedCostUsd({
+        inputTokens,
+        outputTokens,
+        inputCostPerMillion:
+          this.embeddingInputCostPerMillion,
+        outputCostPerMillion:
+          this.embeddingOutputCostPerMillion
+      });
+    }
+
     await this.aiCostLogRepository.createAiCostLog({
       jobId,
-      operation: "image_processing",
-      provider: "ai",
-      model: this.visionModel,
-      inputTokens: null,
-      outputTokens: null,
+      operation,
+      provider,
+      model,
+      inputTokens,
+      outputTokens,
       durationMs,
-      estimatedCostUsd: null,
+      estimatedCostUsd,
       success,
       errorMessage
     });
