@@ -155,7 +155,7 @@ Job states include:
 
 ```text
 pending → running → completed
-                 ↘ failed
+               ↘ failed
 ```
 
 Corpus ingestion is idempotent for an image filename. A database-level unique constraint prevents duplicate image records, while repeated processing reuses existing records and skips completed images.
@@ -323,7 +323,7 @@ The application container connects to PostgreSQL through the Docker network usin
 
 The verified corpus contains **43 images** across four categories.
 
-The corpus was curated using per-image provenance and license verification. Three GPL-licensed sterilizer images were excluded from the final corpus and replaced with verified public-domain candidates.
+The corpus was curated using per-image provenance and license verification. Three GPL-licensed sterilizer images were excluded from the final corpus and replaced with verified public-domain candidates from Wikimedia Commons.
 
 Final database integrity verification:
 
@@ -392,11 +392,11 @@ The completed evaluation used:
 
 The guard improves precision for three of the four evaluated subjects.
 
-The patient-monitor category is the main weakness. During evaluation, several hard-negative images were themselves classified by the vision model as patient monitors with high confidence. When the structured vision classification is incorrect, the downstream subject guard has limited ability to reject the candidate.
+The patient-monitor category is the main weakness. During evaluation, several hard-negative images were themselves classified by the vision model as patient monitors with high confidence. When the expected subject and the vision-model subject agree, the mismatch guard accepts the match regardless of similarity score.
 
 This limitation is reported rather than hidden through aggressive threshold tuning.
 
-The evaluation currently measures **retrieval Precision@10 and guarded precision**. Recall is not reported because not every labeled positive image is necessarily part of the completed candidate set used for this benchmark.
+The evaluation currently measures **retrieval Precision@10 and guarded precision**. Recall is not reported because not every labeled positive image is necessarily part of the completed candidate set.
 
 Generated evaluation output is intentionally ignored by Git:
 
