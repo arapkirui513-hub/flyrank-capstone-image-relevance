@@ -1,4 +1,5 @@
 ﻿import { pool } from "../app/db/pool.js";
+import GeminiEmbeddingProvider from "../app/services/providers/gemini-embedding-provider.js";
 
 const embeddingModel =
   process.env.EMBEDDING_MODEL || "gemini-embedding-001";
@@ -7,6 +8,23 @@ const embeddingModelVersion =
   process.env.EMBEDDING_MODEL_VERSION || "1";
 
 async function seed() {
+  const embeddingProvider = new GeminiEmbeddingProvider({
+    apiKey: process.env.GEMINI_API_KEY,
+    model: embeddingModel
+  });
+
+  const imageText =
+    "A patient monitor displaying vital signs at a hospital bedside.";
+
+  const postText =
+    "A hospital patient monitor displaying vital signs.";
+
+  const embeddingResult =
+    await embeddingProvider.embedText(imageText);
+
+  const postEmbeddingResult =
+    await embeddingProvider.embedText(postText);
+
   await pool.query("BEGIN");
 
   try {
@@ -87,7 +105,7 @@ async function seed() {
         image.id,
         embeddingModel,
         embeddingModelVersion,
-        JSON.stringify([0.12, 0.34, 0.56, 0.78])
+        JSON.stringify(embeddingResult.data)
       ]
     );
 
@@ -114,7 +132,7 @@ async function seed() {
         `,
         [
           postTitle,
-          "A hospital patient monitor displaying vital signs."
+          postText
         ]
       );
 
@@ -130,13 +148,15 @@ async function seed() {
           embedding
         )
         VALUES ($1, $2, $3, $4::jsonb)
-        ON CONFLICT DO NOTHING
+        ON CONFLICT (post_id, model, model_version)
+        DO UPDATE SET
+          embedding = EXCLUDED.embedding
       `,
       [
         post.id,
         embeddingModel,
         embeddingModelVersion,
-        JSON.stringify([0.12, 0.34, 0.56, 0.78])
+        JSON.stringify(postEmbeddingResult.data)
       ]
     );
 
@@ -145,6 +165,7 @@ async function seed() {
     console.log("Seed complete.");
     console.log(`Image ID: ${image.id}`);
     console.log(`Post ID: ${post.id}`);
+    console.log(`Embedding dimensions: ${embeddingResult.data.length}`);
   } catch (error) {
     await pool.query("ROLLBACK");
     throw error;
