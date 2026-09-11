@@ -1,12 +1,9 @@
-name: flyrank-capstone-image-relevance
+﻿name: flyrank-capstone-image-relevance
 version: 0.1.0
 
-run: npm start
-
-seed: TBD
-
+run: docker compose up --build -d
+seed: docker compose exec app node scripts/seed-demo.js
 test: npm test
-
 base_url: http://localhost:3000
 
 endpoints:
