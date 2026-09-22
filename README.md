@@ -1,31 +1,72 @@
 # AI Image Understanding & Content Matching Engine
 
-A backend system that analyzes healthcare-equipment images, generates semantic embeddings, retrieves candidate images for content, and applies a structured mismatch guard before returning suggestions.
+An AI-assisted image understanding and content matching engine for healthcare equipment content.
 
-Built as the FlyRank Backend Track capstone.
+The system combines structured vision metadata, semantic embeddings, cosine-similarity retrieval, and a validation guard to recommend images for healthcare-related content while keeping human review in the loop.
 
-## What problem does this solve?
+**Important:** This is a content-matching system, not a clinical AI system.
 
-Content systems often need to select an image that actually matches the subject of a post.
+## Table of Contents
 
-A similarity-only approach can return images that are visually or semantically related but still represent the wrong equipment. This project separates **retrieval** from **validation**:
+1. [What This Project Does](#1-what-this-project-does)
+2. [Architecture](#2-architecture)
+3. [End-to-End Pipeline](#3-end-to-end-pipeline)
+4. [Background Image Processing](#4-background-image-processing)
+5. [AI Cost Logging](#5-ai-cost-logging)
+6. [Persistence](#6-persistence)
+7. [API](#7-api)
+8. [Running Locally](#8-running-locally)
+9. [Environment](#9-environment)
+10. [Start PostgreSQL](#10-start-postgresql)
+11. [Start the API](#11-start-the-api)
+12. [Run the Full Docker Stack](#12-run-the-full-docker-stack)
+13. [Dataset and Corpus](#13-dataset-and-corpus)
+14. [V2 Evaluation](#14-v2-evaluation)
+15. [Automated Testing](#15-automated-testing)
+16. [End-to-End Example](#16-end-to-end-example)
+17. [Key Design Decisions](#17-key-design-decisions)
+18. [Limitations](#18-limitations)
+19. [Safety Boundary](#19-safety-boundary)
+20. [Project Structure](#20-project-structure)
+21. [AI-Assisted Development Transparency](#21-ai-assisted-development-transparency)
+22. [Current Verification Status](#22-current-verification-status)
 
-1. A vision model extracts structured image metadata.
-2. An embedding model creates semantic vectors.
-3. A matching service ranks candidate images by cosine similarity.
-4. A mismatch guard checks subject compatibility, confidence, and similarity.
-5. Accepted/rejected suggestions can be sent through a human review workflow.
+---
 
-The system uses a healthcare-equipment content domain with four verified categories:
+## 1. What This Project Does
 
-- `patient_monitor`
-- `defibrillator`
-- `sterilizer`
-- `hospital_bed`
+### Problem
 
-This is a content-matching system, **not a clinical AI system**.
+Similarity-only image retrieval can return images that look or read as semantically related while still representing the wrong equipment.
 
-## Architecture
+For healthcare content, that distinction matters. A visually similar device can still be the wrong device category.
+
+This project separates **retrieval** from **validation**.
+
+### Intended users
+
+The system is designed for teams producing healthcare equipment content that need a structured way to:
+
+* process equipment images
+* extract image metadata
+* generate semantic embeddings
+* retrieve visually/semantically related candidates
+* reject incompatible candidates
+* review accepted suggestions
+* track AI usage and estimated cost
+
+### Supported equipment categories
+
+The verified corpus currently contains four categories:
+
+* `patient_monitor`
+* `defibrillator`
+* `sterilizer`
+* `hospital_bed`
+
+---
+
+## 2. Architecture
 
 ```text
                          ┌─────────────────────┐
@@ -33,178 +74,187 @@ This is a content-matching system, **not a clinical AI system**.
                          │       Express       │
                          └──────────┬──────────┘
                                     │
-             ┌──────────────────────┼──────────────────────┐
-             │                      │                      │
-             ▼                      ▼                      ▼
-       Image Processing        Post Embedding       Suggestions
-             │                      │                      │
-             ▼                      ▼                      ▼
-       Vision Provider       Embedding Provider     Matching Service
-       Gemini / Groq               Gemini                 │
-             │                      │                     ▼
-             ▼                      ▼               Mismatch Guard
-       Structured metadata     Vector embedding           │
-             │                      │                     ▼
-             └──────────────┬───────┴──────────────► Review
-                            │
-                            ▼
-                       PostgreSQL
+                 ┌──────────────────┼──────────────────┐
+                 │                  │                  │
+                 ▼                  ▼                  ▼
+          Image Processing      Post Embedding    Suggestions
+                 │                  │                  │
+                 ▼                  ▼                  ▼
+          Vision Provider     Embedding Provider   Matching Service
+                 │                  │                  │
+          ┌──────┴──────┐           │                  ▼
+          │             │           │           Cosine Similarity
+       Gemini         Groq          │                  │
+          │             │           │                  ▼
+          └─────────────┘           │            Mismatch Guard
+                                    │                  │
+                                    └──────────┬───────┘
+                                               │
+                                               ▼
+                                         Human Review
+                                               │
+                                               ▼
+                                           PostgreSQL
 ```
 
 ### Provider abstraction
 
-AI provider-specific API handling is separated behind provider interfaces:
+Vision analysis is exposed through a common provider contract:
 
 ```text
 VisionProvider
 ├── GeminiVisionProvider
 └── GroqVisionProvider
+```
 
+Embedding generation uses:
+
+```text
 EmbeddingProvider
 └── GeminiEmbeddingProvider
 ```
 
-This keeps provider-specific HTTP behavior out of the core application services and leaves room for future providers.
+This keeps provider-specific implementation separate from the matching and validation logic.
 
-## Core pipeline
+---
 
-### 1. Vision analysis
+## 3. End-to-End Pipeline
 
-Each image is analyzed into structured metadata:
-
-```json
-{
-  "subject": "patient monitor",
-  "category": "medical_equipment",
-  "attributes": [
-    "bedside",
-    "vital signs",
-    "display"
-  ],
-  "caption": "A patient monitor displaying vital signs.",
-  "confidence": 0.92
-}
-```
-
-The response is validated against a Zod schema before persistence.
-
-### 2. Embedding generation
-
-The generated image representation is passed to an embedding provider.
-
-The resulting vector is stored with its model and model version.
-
-### 3. Semantic retrieval
-
-For an embedded post, the matching service calculates cosine similarity against successfully embedded image candidates.
-
-Candidates are ranked by similarity and limited to the requested top-K.
-
-### 4. Mismatch guard
-
-Retrieval is not treated as sufficient.
-
-The guard checks:
-
-- vision confidence
-- similarity score
-- expected subject
-- normalized subject aliases
-
-Current thresholds:
-
-- Confidence: `0.70`
-- Similarity: `0.65`
-
-The guard can produce:
+The core flow is:
 
 ```text
-accepted
-rejected
-no_confident_match
+Image
+  │
+  ▼
+Vision analysis
+  │
+  ├── subject
+  ├── category
+  ├── attributes
+  ├── caption
+  └── confidence
+  │
+  ▼
+Semantic embedding
+  │
+  ▼
+Post embedding
+  │
+  ▼
+Cosine-similarity retrieval
+  │
+  ▼
+Candidate ranking
+  │
+  ▼
+Mismatch guard
+  │
+  ├── confidence threshold
+  ├── similarity threshold
+  └── subject compatibility
+  │
+  ├── accepted
+  ├── rejected
+  └── no_confident_match
+  │
+  ▼
+Human review
 ```
 
-`no_confident_match` is an internal safe rejection path and is not persisted as an accepted/rejected suggestion.
+The system uses two explicit thresholds:
 
-### 5. Human review
+* Vision confidence: `0.70`
+* Similarity: `0.65`
 
-Persisted suggestions can be reviewed through the API.
+A candidate must satisfy the guard conditions before being accepted.
 
-Reviewers can:
+---
 
-- approve a suggestion
-- reject a suggestion with a reason
-- retrieve a suggestion together with its review state
+## 4. Background Image Processing
 
-Duplicate reviews are prevented.
-
-## Background image processing
-
-Image processing runs through a job-based workflow.
-
-A processing job:
-
-1. finds pending images;
-2. processes images individually;
-3. tracks progress;
-4. retries failed image processing;
-5. records successful and failed states;
-6. logs AI usage and estimated cost.
-
-Job states include:
+Image corpus processing runs through a background job lifecycle.
 
 ```text
-pending → running → completed
-               ↘ failed
+pending
+   │
+   ▼
+running
+   │
+   ├──────────────► completed
+   │
+   └──────────────► failed
 ```
 
-Corpus ingestion is idempotent for an image filename. A database-level unique constraint prevents duplicate image records, while repeated processing reuses existing records and skips completed images.
+The job tracks:
 
-## AI cost logging
+* total images
+* processed images
+* progress
+* successful processing
+* failed processing
+* retries
+* AI usage
+* estimated cost
 
-Every provider call is logged independently.
+Image processing retries failed operations up to the configured retry limit.
 
-AI cost records include:
+Corpus ingestion is idempotent by filename, with database uniqueness constraints preventing duplicate corpus entries.
 
-- operation
-- provider
-- model
-- input tokens
-- output tokens
-- duration
-- estimated cost
-- success/failure
-- error message
-- job association when applicable
+---
 
-Example operations:
+## 5. AI Cost Logging
 
-```text
-vision_analysis
-embedding_generation
-```
+Every AI operation can produce a cost log containing:
 
-Estimated cost is calculated when usage and provider pricing are available.
+* operation
+* provider
+* model
+* input tokens
+* output tokens
+* duration
+* estimated cost
+* success/failure
+* error information
+* associated job ID
 
-This makes AI usage, latency, and failures observable rather than treating model calls as invisible infrastructure.
+This makes AI usage observable instead of treating model calls as opaque application behavior.
 
-## Persistence
+---
 
-PostgreSQL stores durable application state for:
+## 6. Persistence
 
-- images
-- image metadata
-- image embeddings
-- posts
-- post embeddings
-- suggestions
-- reviews
-- processing jobs
-- AI cost logs
+PostgreSQL stores the main application state, including:
 
-The database schema is initialized through the migration files mounted into the PostgreSQL Docker container.
+* images
+* image metadata
+* image embeddings
+* posts
+* post embeddings
+* suggestions
+* reviews
+* processing jobs
+* AI cost logs
 
-## API
+Database constraints are used to protect data integrity.
+
+The verified corpus integrity checks found:
+
+| Check                        | Result |
+| ---------------------------- | -----: |
+| Corpus images                |     43 |
+| Metadata rows                |     43 |
+| Distinct metadata image IDs  |     43 |
+| Metadata orphans             |      0 |
+| Metadata duplicates          |      0 |
+| Embedding rows               |     43 |
+| Distinct embedding image IDs |     43 |
+| Embedding orphans            |      0 |
+| Embedding duplicates         |      0 |
+| Unique corpus filenames      |     43 |
+
+---
+
+## 7. API
 
 ### Health
 
@@ -220,7 +270,7 @@ GET /images
 GET /images/:id
 ```
 
-### Image processing
+### Image processing jobs
 
 ```http
 POST /jobs/image-processing
@@ -234,11 +284,6 @@ GET /jobs/:id
 POST /posts
 GET /posts/:id
 GET /posts/:id/images
-```
-
-### Post embeddings
-
-```http
 POST /posts/:postId/embed
 ```
 
@@ -247,59 +292,98 @@ POST /posts/:postId/embed
 ```http
 POST /posts/:postId/suggestions
 GET /suggestions/:id
-```
-
-### Reviews
-
-```http
 POST /suggestions/:id/approve
 POST /suggestions/:id/reject
 ```
 
-Rejected reviews require a non-empty reason.
+The suggestion workflow therefore separates automated candidate generation from the final review decision.
 
-## Running locally
+---
+
+## 8. Running Locally
 
 ### Requirements
 
-- Node.js 22+
-- Docker Desktop
-- PostgreSQL through Docker
-- API keys for the configured AI providers
+* Node.js
+* npm
+* Docker Desktop
+* PostgreSQL through the provided Docker Compose configuration
+* Required AI provider API key(s)
 
 Install dependencies:
 
-```bash
+```powershell
 npm install
 ```
 
-Create an environment file:
+Create the local environment file:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Add the required provider credentials to `.env`.
+Update `.env` with the required provider credentials and database configuration.
 
-### Start PostgreSQL
+For the Docker PostgreSQL instance exposed to the host, the local database URL is:
 
-```bash
+```text
+postgresql://postgres:postgres@localhost:5433/image_relevance
+```
+
+---
+
+## 9. Environment
+
+The application uses environment variables for database configuration, AI provider credentials, and AI cost estimation.
+
+Example:
+
+```env
+DATABASE_URL=postgresql://postgres:postgres@localhost:5433/image_relevance
+
+GEMINI_API_KEY=your_key_here
+GROQ_API_KEY=your_key_here
+```
+
+Cost-per-million-token variables are also supported by the application.
+
+Do not commit real API keys.
+
+---
+
+## 10. Start PostgreSQL
+
+Start the database container:
+
+```powershell
 docker compose up -d db
 ```
 
-PostgreSQL is exposed locally on:
+Verify it:
+
+```powershell
+docker compose ps
+```
+
+The expected host mapping is:
 
 ```text
-localhost:5433
+0.0.0.0:5433 -> 5432/tcp
 ```
 
-### Start the application
+The database must be running before executing the repository integration tests.
 
-```bash
-npm start
+---
+
+## 11. Start the API
+
+Run the application in development mode:
+
+```powershell
+npm run dev
 ```
 
-The API listens on:
+The API runs on the configured application port, with the default development setup using:
 
 ```text
 http://localhost:3000
@@ -307,115 +391,118 @@ http://localhost:3000
 
 Health check:
 
-```bash
+```powershell
 curl http://localhost:3000/health
 ```
 
-### Start the full Docker stack
+---
 
-```bash
+## 12. Run the Full Docker Stack
+
+The project also includes a Docker Compose configuration for the application and PostgreSQL database.
+
+Start the stack:
+
+```powershell
 docker compose up --build
 ```
 
-The application container connects to PostgreSQL through the Docker network using the `db` service.
+Stop the stack:
 
-## Dataset and corpus
+```powershell
+docker compose down
+```
 
-The verified corpus contains **43 images** across four categories.
+---
 
-The corpus was curated using per-image provenance and license verification. Three GPL-licensed sterilizer images were excluded from the final corpus and replaced with verified public-domain candidates from Wikimedia Commons.
+## 13. Dataset and Corpus
 
-Final database integrity verification:
+The verified corpus contains **43 images** across four equipment categories:
 
-| Check | Result |
-|---|---:|
-| Corpus images | 43 |
-| Completed images | 43 |
-| Metadata rows | 43 |
-| Distinct metadata image IDs | 43 |
-| Metadata orphans | 0 |
-| Embedding rows | 43 |
-| Distinct embedding image IDs | 43 |
-| Embedding orphans | 0 |
-| Metadata duplicates | 0 |
-| Embedding duplicates | 0 |
-| Unique corpus filenames | 43 |
+* patient monitors
+* defibrillators
+* sterilizers
+* hospital beds
 
-The evaluation manifest is stored in:
+The corpus was built with attention to image licensing and source verification.
+
+Three GPL-licensed sterilizer images were excluded and replaced with verified public-domain Wikimedia Commons candidates.
+
+The evaluation dataset is represented by:
 
 ```text
 data/evaluation.csv
 ```
 
-Ground truth distinguishes positive examples, hard negatives, and rejected images. Ground-truth labels come from the dataset manifest rather than from model predictions.
+The evaluation runner is:
 
-## Evaluation
-
-The project includes a reproducible evaluation runner:
-
-```bash
-node scripts/run-evaluation.js
+```text
+scripts/run-evaluation.js
 ```
 
-The completed evaluation used:
+Ground-truth labels distinguish positive examples, hard negatives, and rejected candidates.
 
-- 12 evaluation posts
-- 3 posts per subject
-- 4 subject categories
-- top-10 retrieval
-- positive examples
-- hard-negative examples
+---
+
+## 14. V2 Evaluation
+
+The latest verified evaluation was run on **2026-09-22** after starting the PostgreSQL container and running the complete test suite.
 
 ### Overall results
 
-| Metric | Result |
-|---|---:|
-| Evaluation posts | 12 |
-| Candidates evaluated | 120 |
-| Retrieval true positives | 72 |
-| Retrieval Precision@10 | **60.00%** |
-| Accepted suggestions | 45 |
-| Accepted true positives | 30 |
-| Accepted false positives | 15 |
-| Guarded precision | **66.67%** |
+| Metric                   | Result |
+| ------------------------ | -----: |
+| Posts evaluated          |     12 |
+| Candidates evaluated     |    120 |
+| Retrieved true positives |     72 |
+| Retrieval Precision@10   | 60.00% |
+| Accepted suggestions     |     45 |
+| Accepted true positives  |     30 |
+| Accepted false positives |     15 |
+| Guarded Precision        | 66.67% |
 
-### By subject
+The evaluation covered three posts for each of the four equipment categories.
 
-| Subject | Retrieval Precision@10 | Guarded Precision |
-|---|---:|---:|
-| Defibrillator | 80.00% | 100.00% |
-| Hospital bed | 40.00% | 100.00% |
-| Patient monitor | 20.00% | 28.57% |
-| Sterilizer | 100.00% | 100.00% |
+### Per-category results
+
+| Category        | Retrieval Precision@10 | Guarded Precision |
+| --------------- | ---------------------: | ----------------: |
+| Defibrillator   |                 80.00% |           100.00% |
+| Hospital bed    |                 40.00% |           100.00% |
+| Patient monitor |                 20.00% |            28.57% |
+| Sterilizer      |                100.00% |           100.00% |
 
 ### Interpretation
 
-The guard improves precision for three of the four evaluated subjects.
+The validation guard improves precision for three of the four evaluated categories.
 
-The patient-monitor category is the main weakness. During evaluation, several hard-negative images were themselves classified by the vision model as patient monitors with high confidence. When the expected subject and the vision-model subject agree, the mismatch guard accepts the match regardless of similarity score.
+The main weakness is **patient-monitor matching**.
 
-This limitation is reported rather than hidden through aggressive threshold tuning.
+Some hard-negative images are themselves classified by the vision model as patient monitors with high confidence. When the expected subject and model subject agree, the current guard can still accept a candidate even when its similarity score is not strong enough to distinguish the specific equipment context.
 
-The evaluation currently measures **retrieval Precision@10 and guarded precision**. Recall is not reported because not every labeled positive image is necessarily part of the completed candidate set.
+This limitation is documented rather than hidden through additional threshold tuning.
 
-Generated evaluation output is intentionally ignored by Git:
+Recall is not reported because the evaluation does not guarantee that every labeled positive appears in the retrieved candidate set.
+
+The evaluation output is also written to:
 
 ```text
 data/evaluation-results.json
-data/evaluation_images/
 ```
 
-## Testing
+---
+
+## 15. Automated Testing
 
 The project uses Node's built-in test runner.
 
 Run:
 
-```bash
+```powershell
 npm test
 ```
 
-Current verification:
+The verified run on 2026-09-22 produced:
 
 ```text
 tests 89
@@ -426,137 +513,338 @@ skipped 0
 todo 0
 ```
 
-The suite covers:
+The test suite covers:
 
-- subject normalization and aliases
-- metadata schema validation
-- confidence handling
-- mismatch guard decisions
-- cosine similarity
-- repository persistence
-- job lifecycle
-- retry behavior
-- image processing
-- post embedding
-- AI cost logging
-- Gemini embedding provider
-- Gemini vision provider
-- Groq vision provider
-- provider contracts
+* subject normalization and aliases
+* vision metadata validation
+* confidence handling
+* cosine similarity
+* mismatch guard behavior
+* repository persistence
+* database relationships and cascades
+* job lifecycle
+* retry behavior
+* image processing
+* post embedding
+* AI cost logging
+* Gemini embedding provider
+* Gemini vision provider
+* Groq vision provider
+* provider contracts
 
-## Design decisions
+Some service tests intentionally trigger simulated failures so retry and error-handling paths can be verified. Those messages are expected test output and do not represent failing tests.
 
-### Why structured metadata?
+---
 
-A similarity score alone does not explain whether an image represents the requested subject.
+## 16. End-to-End Example
 
-Structured metadata provides explicit signals that can be validated, persisted, and inspected.
+A complete content-matching flow can be reproduced through the API.
 
-### Why separate retrieval from the guard?
+### Step 1: Upload an image
 
-Retrieval answers:
+Create an image record:
 
-> Which images are most similar?
+```http
+POST /images
+```
 
-The guard answers:
+The image enters the image-processing pipeline.
 
-> Is this candidate sufficiently confident and compatible with the expected subject?
+### Step 2: Trigger image processing
 
-Separating these responsibilities makes errors easier to diagnose and keeps the safety check explicit.
+Start processing pending images:
 
-### Why log every AI call?
+```http
+POST /jobs/image-processing
+```
 
-AI calls introduce external cost, latency, and failure modes.
+The job:
 
-Per-call logging makes those operational characteristics observable.
+1. selects pending images
+2. runs vision analysis
+3. stores structured metadata
+4. generates an embedding
+5. persists the embedding
+6. records AI usage
+7. updates job progress
 
-### Why use provider interfaces?
+### Step 3: Create a content post
 
-Provider-specific HTTP/API behavior should not leak into business logic.
+Create a post representing the healthcare content that needs an image.
 
-The abstraction allows the core pipeline to remain independent of the selected vision or embedding provider.
+```http
+POST /posts
+```
 
-### Why use a database uniqueness constraint?
+The post is stored in PostgreSQL.
 
-Application-level checks alone are vulnerable to concurrent requests and repeated processing.
+### Step 4: Embed the post
 
-The `UNIQUE(filename)` database constraint provides an authoritative identity boundary for corpus images.
+Generate a semantic embedding for the post:
 
-## Safety boundary
+```http
+POST /posts/:postId/embed
+```
 
-This is an image/content matching system, not a clinical AI system.
+The embedding is persisted and the AI operation is logged.
 
-It does **not**:
+### Step 5: Generate suggestions
 
-- diagnose patients;
-- interpret clinical images for patient care;
-- recommend treatment;
-- make patient-care decisions;
-- diagnose biomedical equipment faults;
-- replace biomedical engineering judgment;
-- replace clinical review.
+Request candidate images:
 
-The healthcare-equipment domain is used to demonstrate image understanding, semantic retrieval, workflow handling, validation, and human review.
+```http
+POST /posts/:postId/suggestions
+```
 
-## Project structure
+The matching service:
+
+1. compares the post embedding against image embeddings
+2. ranks candidates using cosine similarity
+3. supplies candidate metadata to the mismatch guard
+4. applies confidence, similarity, and subject compatibility checks
+
+### Step 6: Review the suggestion
+
+An accepted candidate can be approved:
+
+```http
+POST /suggestions/:id/approve
+```
+
+Or rejected:
+
+```http
+POST /suggestions/:id/reject
+```
+
+The result is stored as a review record.
+
+This creates the complete path:
+
+```text
+Image
+  → processing job
+  → vision metadata
+  → image embedding
+  → content post
+  → post embedding
+  → candidate retrieval
+  → mismatch guard
+  → human review
+  → approved/rejected suggestion
+```
+
+---
+
+## 17. Key Design Decisions
+
+### Retrieval and validation are separate stages
+
+The most important architectural decision is separating **candidate retrieval** from **candidate validation**.
+
+The matching service answers:
+
+> Which images are semantically similar to this content?
+
+The mismatch guard then asks:
+
+> Is this candidate compatible enough to accept?
+
+This makes it possible to measure retrieval quality separately from validation behavior.
+
+It also makes failures easier to diagnose. A bad result can originate from retrieval, vision classification, thresholding, or subject compatibility rather than being treated as one undifferentiated matching failure.
+
+### Structured metadata instead of raw model output
+
+Vision output is validated against a schema before being persisted.
+
+This gives downstream services predictable fields such as:
+
+* subject
+* category
+* attributes
+* caption
+* confidence
+
+### AI calls are observable
+
+AI operations are logged with provider, model, usage, duration, success/failure, and estimated cost where available.
+
+### Provider interfaces
+
+Vision and embedding providers use explicit contracts so provider-specific code does not leak into the core matching logic.
+
+### Database constraints protect corpus integrity
+
+Unique constraints prevent duplicate corpus filenames and help maintain one metadata and embedding record per image.
+
+---
+
+## 18. Limitations
+
+### Patient-monitor hard negatives
+
+Patient-monitor matching is the current evaluation weakness.
+
+The vision model can confidently classify some hard negatives as patient monitors. Because the guard uses subject compatibility as one of its checks, subject agreement can allow visually weaker candidates through.
+
+The latest evaluation produced:
+
+```text
+Patient monitor
+Retrieval Precision@10: 20.00%
+Guarded Precision: 28.57%
+```
+
+This is the primary area for further improvement.
+
+### Small evaluation corpus
+
+The evaluation uses 12 posts across four equipment categories.
+
+The results should therefore be treated as evaluation evidence for this corpus, not as a general benchmark for healthcare image retrieval.
+
+### Limited category coverage
+
+Only four equipment categories are currently represented in the verified corpus.
+
+Additional categories would be needed to assess behavior across a broader healthcare equipment vocabulary.
+
+### Retrieval recall is not measured
+
+The current evaluation focuses on Precision@10 and guarded precision.
+
+It does not report recall because the evaluation does not establish that every positive image is present in the candidate set.
+
+### Human review remains necessary
+
+The system generates and validates suggestions. It does not establish that an accepted image is appropriate for every publishing context.
+
+---
+
+## 19. Safety Boundary
+
+This project is **not a clinical AI system**.
+
+It does not perform:
+
+* patient diagnosis
+* clinical image interpretation for patient care
+* treatment recommendations
+* patient-care decisions
+* biomedical equipment fault diagnosis
+* replacement of biomedical engineering judgment
+* replacement of clinical review
+
+Its purpose is content matching and workflow support for healthcare equipment-related content.
+
+Human review remains part of the final suggestion workflow.
+
+---
+
+## 20. Project Structure
 
 ```text
 app/
 ├── main.js
 ├── container.js
+├── providers/
 ├── repositories/
-│   ├── ai-cost-log-repository.js
-│   ├── image-embedding-repository.js
-│   ├── image-metadata-repository.js
-│   ├── image-repository.js
-│   ├── job-repository.js
-│   ├── post-embedding-repository.js
-│   ├── post-repository.js
-│   ├── review-repository.js
-│   └── suggestion-repository.js
 └── services/
-    ├── image-processing-job-service.js
-    ├── image-processing-service.js
-    ├── matching-service.js
-    ├── mismatch-guard-service.js
-    ├── post-embedding-service.js
-    ├── suggestion-generation-service.js
-    └── providers/
-        ├── embedding-provider.js
-        ├── gemini-embedding-provider.js
-        ├── gemini-vision-provider.js
-        ├── groq-vision-provider.js
-        └── vision-provider.js
 
 migrations/
-└── ...
 
 scripts/
 ├── process-image-corpus.js
 └── run-evaluation.js
 
 tests/
+├── providers/
+├── repositories/
+├── services/
 └── ...
+
+data/
+├── evaluation.csv
+└── evaluation-results.json
+
+docs/
+└── design.md
+
+capstone.yaml
+EVIDENCE.md
+docker-compose.yml
+package.json
+README.md
 ```
 
-## Current status
+---
 
-The core capstone implementation is complete and verified.
+## 21. AI-Assisted Development Transparency
 
-- Real Gemini and Groq AI providers integrated
-- Provider abstractions implemented
-- PostgreSQL persistence implemented
-- Background image processing implemented
-- Retry and progress tracking implemented
-- AI cost logging implemented
-- Semantic retrieval implemented
-- Structured mismatch guard implemented
-- Human review API implemented
-- 43-image corpus verified
-- Evaluation dataset and evaluation runner implemented
-- 89/89 automated tests passing
-- Evaluation completed with 60.00% retrieval Precision@10
-- Evaluation completed with 66.67% guarded precision
-- Patient-monitor hard-negative weakness documented
+AI-assisted development was used during implementation for code generation, debugging, test design, documentation, and development support.
 
-The repository's build history and evidence records document the verification decisions and the corrections made during implementation.
+The implemented system was not accepted solely from generated output.
+
+Implementation decisions and outputs were checked through:
+
+* local execution
+* PostgreSQL persistence tests
+* provider contract tests
+* API behavior
+* corpus integrity checks
+* retry and failure-path tests
+* end-to-end processing
+* evaluation runs
+* inspection of generated evaluation results
+
+The developer checked the resulting behavior and used test and evaluation output to determine what could be documented as verified.
+
+The evaluation limitation around patient-monitor hard negatives is explicitly documented rather than removed or hidden to improve the reported metric.
+
+---
+
+## 22. Current Verification Status
+
+Latest verification date: **2026-09-22**
+
+### Test status
+
+```text
+89 tests
+89 passing
+0 failing
+```
+
+### Evaluation status
+
+```text
+12 posts evaluated
+120 candidates evaluated
+72 retrieval true positives
+60.00% Retrieval Precision@10
+45 accepted suggestions
+30 accepted true positives
+15 accepted false positives
+66.67% Guarded Precision
+```
+
+### Corpus status
+
+```text
+43 corpus images
+43 metadata rows
+43 embedding rows
+0 metadata orphans
+0 embedding orphans
+0 duplicate metadata records
+0 duplicate embedding records
+```
+
+### Current assessment
+
+The core capstone pipeline is implemented and locally verified.
+
+The current evaluation demonstrates measurable separation between semantic retrieval and validation, while also exposing a specific weakness in patient-monitor hard-negative handling.
+
+The next iteration should focus on improving subject-level discrimination for patient-monitor candidates rather than simply tuning thresholds against the current evaluation set.
